@@ -1,0 +1,630 @@
+clonecutter/
+├── index.html
+├── style.css
+├── script.js
+├── worker.js
+└── manifest.json
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CloneCutter - Duplicate File Finder</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗑️ CloneCutter</h1>
+            <p>Find and remove duplicate files across multiple folders</p>
+        </header>
+
+        <div class="upload-section">
+            <div class="folder-selector">
+                <button id="selectFolders" class="btn-primary">
+                    📁 Select Folders
+                </button>
+                <div id="folderList" class="folder-list"></div>
+            </div>
+            
+            <div class="file-types">
+                <h3>File Types to Scan:</h3>
+                <label><input type="checkbox" value="image" checked> Images</label>
+                <label><input type="checkbox" value="video" checked> Videos</label>
+                <label><input type="checkbox" value="audio" checked> Audio</label>
+                <label><input type="checkbox" value="document" checked> Documents</label>
+                <label><input type="checkbox" value="archive" checked> Archives</label>
+                <label><input type="checkbox" value="all"> All Files</label>
+            </div>
+            
+            <button id="startScan" class="btn-primary" disabled>🔍 Start Scan</button>
+        </div>
+
+        <div id="progressSection" class="progress-section hidden">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="progressText" class="progress-text">Ready to scan...</div>
+        </div>
+
+        <div id="resultsSection" class="results-section hidden">
+            <div class="stats">
+                <div class="stat">
+                    <span id="totalDuplicates">0</span>
+                    <small>Duplicate Groups</small>
+                </div>
+                <div class="stat">
+                    <span id="totalFiles">0</span>
+                    <small>Total Files Scanned</small>
+                </div>
+                <div class="stat">
+                    <span id="spaceSaved">0 MB</span>
+                    <small>Potential Space Saved</small>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="selectAll" class="btn-secondary">Select All Duplicates</button>
+                <button id="clearAll" class="btn-secondary">Clear Selection</button>
+                <button id="removeSelected" class="btn-danger" disabled>🗑️ Remove Selected (Recoverable)</button>
+            </div>
+
+            <div id="duplicatesList" class="duplicates-list"></div>
+        </div>
+
+        <div id="trashSection" class="trash-section hidden">
+            <h3>🗑️ Recycle Bin</h3>
+            <div id="trashList"></div>
+            <button id="emptyTrash" class="btn-danger">Empty Trash</button>
+            <button id="restoreAll" class="btn-secondary">Restore All</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
+
+----------------------------------------------------------------
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    color: #333;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+header {
+    text-align: center;
+    color: white;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+.upload-section {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.folder-selector {
+    margin-bottom: 20px;
+}
+
+.folder-list {
+    margin-top: 15px;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 2px dashed #e0e0e0;
+    padding: 15px;
+    border-radius: 10px;
+    background: #f9f9f9;
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.folder-item:last-child {
+    border-bottom: none;
+}
+
+.folder-item button {
+    background: #ff4757;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+.file-types {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.file-types label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.btn-primary, .btn-secondary, .btn-danger {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: 600;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-danger {
+    background: #ff4757;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #ff3742;
+    transform: translateY(-2px);
+}
+
+.progress-section {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 15px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+.results-section {
+    background: white;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+.stat {
+    text-align: center;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 12px;
+}
+
+.stat span {
+    display: block;
+    font-size: 2em;
+    font-weight: bold;
+    color: #667eea;
+}
+
+.actions {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+    flex-wrap: wrap;
+}
+
+.duplicates-list {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.duplicate-group {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 12px;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.duplicate-group.selected {
+    border-color: #667eea;
+    background: #e8f0fe;
+}
+
+.group-header {
+    padding: 20px;
+    background: white;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.group-info h4 {
+    margin-bottom: 5px;
+    color: #333;
+}
+
+.group-stats {
+    color: #666;
+    font-size: 14px;
+}
+
+.group-toggle {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.group-files {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+
+.group-files.expanded {
+    max-height: 500px;
+}
+
+.file-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 20px;
+    border-top: 1px solid #e9ecef;
+    transition: background 0.2s ease;
+}
+
+.file-item:hover {
+    background: #e9ecef;
+}
+
+.file-item.selected {
+    background: #d1ecf1;
+    border-left: 4px solid #17a2b8;
+}
+
+.file-checkbox {
+    margin-right: 15px;
+    transform: scale(1.2);
+}
+
+.file-info {
+    flex: 1;
+}
+
+.file-name {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.file-details {
+    color: #666;
+    font-size: 14px;
+}
+
+.file-size {
+    font-family: monospace;
+    background: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.trash-section {
+    background: #fff5f5;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+    border: 1px solid #ffe6e6;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    header h1 {
+        font-size: 2em;
+    }
+    
+    .actions {
+        flex-direction: column;
+    }
+    
+    .file-types {
+        grid-template-columns: 1fr;
+    }
+}
+
+--------------------------------------------------------------------
+
+class CloneCutter {
+    constructor() {
+        this.folders = [];
+        this.duplicates = [];
+        this.trash = [];
+        this.worker = null;
+        this.init();
+    }
+
+    init() {
+        this.bindEvents();
+        this.checkPwaSupport();
+    }
+
+    bindEvents() {
+        document.getElementById('selectFolders').addEventListener('click', () => this.selectFolders());
+        document.getElementById('startScan').addEventListener('click', () => this.startScan());
+        document.getElementById('selectAll').addEventListener('click', () => this.selectAll());
+        document.getElementById('clearAll').addEventListener('click', () => this.clearAll());
+        document.getElementById('removeSelected').addEventListener('click', () => this.removeSelected());
+        document.getElementById('emptyTrash').addEventListener('click', () => this.emptyTrash());
+        document.getElementById('restoreAll').addEventListener('click', () => this.restoreAll());
+
+        document.querySelector('.file-types').addEventListener('change', (e) => {
+            if (e.target.value === 'all') {
+                this.toggleAllFileTypes(e.target.checked);
+            }
+            this.updateStartButton();
+        });
+    }
+
+    async selectFolders() {
+        try {
+            if ('showDirectoryPicker' in window) {
+                const dirHandle = await window.showDirectoryPicker();
+                const folderInfo = await this.getFolderInfo(dirHandle);
+                this.addFolder(folderInfo);
+            } else {
+                alert('Directory picker not supported. Please use Chrome/Edge with File System Access API.');
+            }
+        } catch (err) {
+            if (err.name !== 'AbortError') {
+                console.error('Folder selection error:', err);
+            }
+        }
+    }
+
+    async getFolderInfo(dirHandle) {
+        const folderName = dirHandle.name;
+        const fileCount = await this.countFiles(dirHandle);
+        return { handle: dirHandle, name: folderName, fileCount, path: folderName };
+    }
+
+    async countFiles(dirHandle, count = 0) {
+        for await (const entry of dirHandle.values()) {
+            if (entry.kind === 'file') {
+                count++;
+            } else if (entry.kind === 'directory') {
+                count += await this.countFiles(entry);
+            }
+        }
+        return count;
+    }
+
+    addFolder(folderInfo) {
+        const exists = this.folders.some(f => f.name === folderInfo.name);
+        if (!exists) {
+            this.folders.push(folderInfo);
+            this.renderFolders();
+            this.updateStartButton();
+        }
+    }
+
+    renderFolders() {
+        const container = document.getElementById('folderList');
+        container.innerHTML = this.folders.map(folder => `
+            <div class="folder-item">
+                📁 ${folder.name} (${folder.fileCount.toLocaleString()} files)
+                <button onclick="cloneCutter.removeFolder('${folder.name}')">Remove</button>
+            </div>
+        `).join('');
+    }
+
+    removeFolder(folderName) {
+        this.folders = this.folders.filter(f => f.name !== folderName);
+        this.renderFolders();
+        this.updateStartButton();
+    }
+
+    toggleAllFileTypes(checked) {
+        document.querySelectorAll('.file-types input:not([value="all"])').forEach(cb => {
+            cb.checked = checked;
+        });
+    }
+
+    updateStartButton() {
+        const hasFolders = this.folders.length > 0;
+        document.getElementById('startScan').disabled = !hasFolders;
+    }
+
+    async startScan() {
+        if (this.folders.length === 0) return;
+
+        this.showProgress();
+        this.createWorker();
+
+        const fileTypes = Array.from(document.querySelectorAll('.file-types input:checked'))
+            .filter(cb => cb.value !== 'all')
+            .map(cb => cb.value);
+
+        const files = [];
+        for (const folder of this.folders) {
+            const folderFiles = await this.readFolderFiles(folder.handle, '');
+            files.push(...folderFiles);
+        }
+
+        this.worker.postMessage({
+            action: 'scan',
+            files: files.map(f => ({ path: f.path, handle: f.handle })),
+            fileTypes
+        });
+    }
+
+    async readFolderFiles(dirHandle, pathPrefix) {
+        const files = [];
+        for await (const entry of dirHandle.values()) {
+            const fullPath = pathPrefix ? `${pathPrefix}/${entry.name}` : entry.name;
+            
+            if (entry.kind === 'file') {
+                files.push({ path: fullPath, handle: entry });
+            } else if (entry.kind === 'directory') {
+                files.push(...await this.readFolderFiles(entry, fullPath));
+            }
+        }
+        return files;
+    }
+
+    createWorker() {
+        if (this.worker) {
+            this.worker.terminate();
+        }
+
+        const workerCode = this.worker.toString();
+        const blob = new Blob([`(${workerCode})()`], { type: 'application/javascript' });
+        this.worker = new Worker(URL.createObjectURL(blob));
+
+        this.worker.onmessage = (e) => this.handleWorkerMessage(e.data);
+        this.worker.onerror = (e) => {
+            console.error('Worker error:', e);
+            this.showError('Scan failed. Please try again.');
+        };
+    }
+
+    handleWorkerMessage(data) {
+        switch (data.type) {
+            case 'progress':
+                this.updateProgress(data.progress, data.message);
+                break;
+            case 'complete':
+                this.duplicates = data.duplicates;
+                this.renderResults();
+                this.hideProgress();
+                break;
+            case 'error':
+                this.showError(data.message);
+                break;
+        }
+    }
+
+    showProgress() {
+        document.querySelector('.upload-section').classList.add('hidden');
+        document.getElementById('progressSection').classList.remove('hidden');
+        document.getElementById('resultsSection').classList.add('hidden');
+    }
+
+    hideProgress() {
+        document.getElementById('progressSection').classList.add('hidden');
+        document.getElementById('resultsSection').classList.remove('hidden');
+    }
+
+    updateProgress(progress, message) {
+        document.getElementById('progressFill').style.width = `${progress}%`;
+        document.getElementById('progressText').textContent = message;
+    }
+
+    renderResults() {
+        this.updateStats();
+        const container = document.getElementById('duplicatesList');
+        container.innerHTML = this.duplicates.map(group => this.renderDuplicateGroup(group)).join('');
+
+        // Bind group toggle events
+        document.querySelectorAll('.group-header').forEach(header => {
+            header.addEventListener('click', () => {
+                const group = header.parentElement;
+                group.classList.toggle('expanded');
+                const toggle = header.querySelector('.group-toggle');
+                toggle.textContent = group.classList.contains('expanded') ? '▼' : '▶';
+            });
+        });
+
+        // Bind file selection events
+        document.querySelectorAll('.file-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => this.updateRemoveButton());
+        });
+    }
+
+    renderDuplicateGroup(group) {
+        const totalSize = group.files.reduce((sum, f) => sum + f.size, 0);
+        const spaceSaved = (group.files.length - 1) * group.files[0].size;
+        
+        return `
+            <div class="duplicate-group" data-group-id="${group.id}">
+                <div class="group-header">
+                    <div class="group-info">
+                        <h4>${group.hash.substring(0, 16)}...</h4>
+                        <div class="group-stats">
+                            ${group.files.length} identical files • 
+                            ${this.formatBytes(totalSize)} total • 
+                            Save
