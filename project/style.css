@@ -399,7 +399,7 @@ header h1 {
 }
 
 .group-files.expanded {
-    max-height: 3000px;
+    max-height: none;
 }
 
 .file-item {
@@ -487,6 +487,7 @@ header h1 {
 .file-details {
     color: #666;
     font-size: 14px;
+    overflow-wrap: anywhere;
 }
 
 .file-size {
@@ -509,6 +510,54 @@ header h1 {
     display: none !important;
 }
 
+.app-message {
+    padding: 14px 18px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.app-error {
+    background: #fff5f5;
+    border: 1px solid #ffc9c9;
+    color: #c92a2a;
+}
+
+.app-notice {
+    background: #ebfbee;
+    border: 1px solid #b2f2bb;
+    color: #2b8a3e;
+}
+
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+button:focus-visible, input:focus-visible {
+    outline: 3px solid #364fc7;
+    outline-offset: 3px;
+}
+
+.empty-folders, .empty-results {
+    color: #666;
+    padding: 8px 0;
+}
+
+.reconnect-button {
+    margin-top: 12px;
+}
+
+.file-thumb-slot-audio {
+    flex-direction: column;
+}
+
+.file-name {
+    overflow-wrap: anywhere;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 10px;
@@ -524,5 +573,13 @@ header h1 {
     
     .file-types {
         grid-template-columns: 1fr;
+    }
+
+    .file-item {
+        flex-wrap: wrap;
+    }
+
+    .file-info {
+        flex-basis: 100%;
     }
 }

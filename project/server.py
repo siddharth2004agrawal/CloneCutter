@@ -4,12 +4,14 @@ CloneCutter local server: serves the web UI + API for scanning and moving files
 to the system Recycle Bin. Works in Brave, Firefox, Safari, etc. (no File System Access API).
 
 Usage (from this folder):
+  npm install
+  npm run build
   pip install -r requirements.txt
   python server.py
 
 Then open http://127.0.0.1:8765 (or the port printed).
-If you use another static server (e.g. port 5500), set in index.html before script.js:
-  <script>window.__CLONECUTTER_API__ = 'http://127.0.0.1:8765';</script>
+For React development, run npm run dev in another terminal. Vite proxies /api here.
+An external API can be configured with VITE_CLONECUTTER_API in .env.local.
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ except ImportError:
     HAS_SEND2TRASH = False
 
 ROOT = Path(__file__).resolve().parent
+UI_ROOT = ROOT / "dist"
 
 EXTENSIONS = {
     "image": {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic", "heif", "avif"},
@@ -77,7 +80,7 @@ def walk_files(roots: list[str]) -> list[str]:
                     out.append(str(p.resolve()))
                 except OSError:
                     pass
-    return out
+    return list(dict.fromkeys(out))
 
 
 def quick_hash_path(path: str) -> str:
@@ -170,7 +173,7 @@ class Handler:
 
         class H(SimpleHTTPRequestHandler):
             def __init__(self, *args, **kwargs):
-                super().__init__(*args, directory=str(ROOT), **kwargs)
+                super().__init__(*args, directory=str(UI_ROOT), **kwargs)
 
             def log_message(self, fmt, *args_):
                 sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args_))
@@ -234,6 +237,9 @@ class Handler:
                     self.wfile.write(body)
                     return
 
+                if not (UI_ROOT / "index.html").is_file():
+                    send_json(self, 503, {"error": "React UI is not built. Run npm install and npm run build, or use npm run dev."})
+                    return
                 return SimpleHTTPRequestHandler.do_GET(self)
 
             def do_POST(self):
@@ -308,6 +314,8 @@ def main():
     httpd = ThreadingHTTPServer((host, port), h)
     print(f"CloneCutter server: http://{host}:{port}/")
     print("Open that URL in your browser (Brave, Chrome, etc.).")
+    if not (UI_ROOT / "index.html").is_file():
+        print("React UI is not built. Run npm run build, or use npm run dev for development.")
     if not HAS_SEND2TRASH:
         print("WARNING: pip install send2trash — required to delete to Recycle Bin.", file=sys.stderr)
     try:

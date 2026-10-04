@@ -1,104 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#667eea" />
     <title>CloneCutter - Duplicate File Finder</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="manifest" href="manifest.json">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🗑️ CloneCutter</h1>
-            <p>Find and remove duplicate files across multiple folders</p>
-        </header>
-
-        <div id="envWarning" class="env-warning hidden" role="status"></div>
-
-        <div id="serverPanel" class="server-panel hidden">
-            <h3>Server mode (all browsers — full delete)</h3>
-            <p class="server-panel-text">
-                Brave and some browsers hide the folder picker. Run <code>python server.py</code> in this project folder, then open the URL it prints (or set
-                <code>window.__CLONECUTTER_API__</code> if the page is served from another port). Add absolute folder paths below and scan — deletes use the
-                <strong>Recycle Bin</strong>.
-            </p>
-            <div class="server-path-row">
-                <input type="text" id="serverPathInput" class="server-path-input" placeholder="e.g. C:\Users\You\Pictures\photo" autocomplete="off">
-                <button type="button" id="serverAddPathBtn" class="btn-secondary">Add folder</button>
-            </div>
-            <ul id="serverPathList" class="server-path-list"></ul>
-            <p id="serverStatus" class="server-status" role="status"></p>
-        </div>
-
-        <div class="upload-section">
-            <div class="folder-selector">
-                <button id="selectFolders" type="button" class="btn-primary">
-                    📁 Select Folders
-                </button>
-                <button id="selectFoldersFallback" type="button" class="btn-secondary btn-fallback hidden">
-                    📂 Choose folder (fallback)
-                </button>
-                <input id="folderFallbackInput" type="file" class="hidden-input" webkitdirectory multiple>
-                <div id="folderList" class="folder-list"></div>
-            </div>
-            
-            <div class="file-types">
-                <h3>File Types to Scan:</h3>
-                <label><input type="checkbox" value="image" checked> Images</label>
-                <label><input type="checkbox" value="video" checked> Videos</label>
-                <label><input type="checkbox" value="audio" checked> Audio</label>
-                <label><input type="checkbox" value="document" checked> Documents</label>
-                <label><input type="checkbox" value="archive" checked> Archives</label>
-                <label><input type="checkbox" value="all"> All Files</label>
-            </div>
-            
-            <button id="startScan" class="btn-primary" disabled>🔍 Start Scan</button>
-        </div>
-
-        <div id="progressSection" class="progress-section hidden">
-            <div class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
-            <div id="progressText" class="progress-text">Ready to scan...</div>
-        </div>
-
-        <div id="resultsSection" class="results-section hidden">
-            <div class="stats">
-                <div class="stat">
-                    <span id="totalDuplicates">0</span>
-                    <small>Duplicate Groups</small>
-                </div>
-                <div class="stat">
-                    <span id="totalFiles">0</span>
-                    <small>Total Files Scanned</small>
-                </div>
-                <div class="stat">
-                    <span id="spaceSaved">0 MB</span>
-                    <small>Potential Space Saved</small>
-                </div>
-            </div>
-
-            <p class="actions-hint">Pick <strong>one copy to keep</strong> per group (radio). Unselected copies are removed from disk when deletion is available.</p>
-            <p id="deleteSupportNote" class="delete-support-note hidden" role="status"></p>
-            <div class="actions">
-                <button id="keepOldest" type="button" class="btn-secondary">Keep oldest in each group</button>
-                <button id="keepNewest" type="button" class="btn-secondary">Keep newest in each group</button>
-                <button id="removeSelected" type="button" class="btn-danger" disabled>🗑️ Remove other copies (keep selected)</button>
-            </div>
-
-            <div id="duplicatesList" class="duplicates-list"></div>
-        </div>
-
-        <div id="trashSection" class="trash-section hidden">
-            <h3>🗑️ Recycle Bin</h3>
-            <div id="trashList"></div>
-            <button id="emptyTrash" class="btn-danger">Empty Trash</button>
-            <button id="restoreAll" class="btn-secondary">Restore All</button>
-        </div>
-    </div>
-
-    <script>window.__CLONECUTTER_API__ = window.__CLONECUTTER_API__ || '';</script>
-    <script src="script.js"></script>
-</body>
+    <link rel="manifest" href="/manifest.json" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

@@ -76,6 +76,7 @@ self.onmessage = async (e) => {
       const qh = await quickHash(file);
       const key = qh;
       const entry = {
+        id: f.id,
         path: f.path,
         handle: f.handle,
         file: f.file,
@@ -108,6 +109,7 @@ self.onmessage = async (e) => {
         const fh = await sha256(buf);
         const list = fullMap.get(fh) || [];
         list.push({
+          id: entry.id,
           path: entry.path,
           handle: entry.handle,
           file: entry.file,
