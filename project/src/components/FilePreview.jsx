@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getExt } from '../lib/files.js';
+import Icon from './Icon.jsx';
 
 export default function FilePreview({ file, serverBase }) {
   const [localUrl, setLocalUrl] = useState('');
@@ -35,8 +36,8 @@ export default function FilePreview({ file, serverBase }) {
     <div className={`file-thumb-slot${kind === 'audio' ? ' file-thumb-slot-audio' : ''}`}>
       {kind === 'image' && src ? <img className="file-thumb" alt={`Preview of ${file.path}`} src={src} />
         : kind === 'video' && src ? <video className="file-thumb file-thumb-video" muted playsInline preload="metadata" src={src} aria-label={`Preview of ${file.path}`} />
-          : kind === 'audio' && src ? <><div className="file-thumb-placeholder" aria-hidden="true">🎵</div><audio className="file-audio-preview" controls preload="none" src={src} aria-label={`Preview of ${file.path}`} /></>
-            : <div className="file-thumb-placeholder" aria-hidden="true">📄</div>}
+          : kind === 'audio' && src ? <><div className="file-thumb-placeholder"><Icon name="music" size={22} /></div><audio className="file-audio-preview" controls preload="none" src={src} aria-label={`Preview of ${file.path}`} /></>
+            : <div className="file-thumb-placeholder"><Icon name="file" size={23} /></div>}
     </div>
   );
 }
