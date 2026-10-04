@@ -34,7 +34,7 @@ export default function FilePreview({ file, serverBase }) {
   const src = serverBase === undefined ? localUrl : `${serverBase}/api/preview?path=${encodeURIComponent(file.path)}`;
   return (
     <div className={`file-thumb-slot${kind === 'audio' ? ' file-thumb-slot-audio' : ''}`}>
-      {kind === 'image' && src ? <img className="file-thumb" alt={`Preview of ${file.path}`} src={src} />
+      {kind === 'image' && src ? <img className="file-thumb" loading="lazy" alt={`Preview of ${file.path}`} src={src} />
         : kind === 'video' && src ? <video className="file-thumb file-thumb-video" muted playsInline preload="metadata" src={src} aria-label={`Preview of ${file.path}`} />
           : kind === 'audio' && src ? <><div className="file-thumb-placeholder"><Icon name="music" size={22} /></div><audio className="file-audio-preview" controls preload="none" src={src} aria-label={`Preview of ${file.path}`} /></>
             : <div className="file-thumb-placeholder"><Icon name="file" size={23} /></div>}

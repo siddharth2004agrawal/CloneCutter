@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test tests/files.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
     "build": "vite build",
     "preview": "vite preview"
   },

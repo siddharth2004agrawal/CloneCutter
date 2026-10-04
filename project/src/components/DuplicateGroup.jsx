@@ -3,7 +3,7 @@ import { basename, formatBytes, formatDate } from '../lib/files.js';
 import FilePreview from './FilePreview.jsx';
 import Icon from './Icon.jsx';
 
-export default function DuplicateGroup({ group, onChoose, serverBase, disabled }) {
+export default function DuplicateGroup({ group, onChoose, onToggle, serverBase, disabled }) {
   const [expanded, setExpanded] = useState(true);
   const extra = group.files.length - 1;
   const firstName = basename(group.files[0].path);
@@ -24,7 +24,11 @@ export default function DuplicateGroup({ group, onChoose, serverBase, disabled }
       </div>
       <div id={filesId} className={`group-files${expanded ? ' expanded' : ''}`} hidden={!expanded}>
         {group.files.map((file, index) => (
-          <div className={`file-item${group.selectedIndex === index ? ' selected' : ''}`} key={file.id || file.path}>
+          <div className={`file-item${group.selectedIndex === index ? ' selected' : ''}${group.deleteIndices.includes(index) ? ' for-deletion' : ''}`} key={file.id || file.path}>
+            <label className="delete-cell">
+              <input className="file-checkbox" type="checkbox" checked={group.deleteIndices.includes(index)} disabled={disabled || group.selectedIndex === index} onChange={(event) => onToggle(group.id, index, event.target.checked)} aria-label={`Delete ${file.path}`} />
+              <span>Delete</span>
+            </label>
             <FilePreview file={file} serverBase={serverBase} />
             <label className="keep-cell">
               <input className="keep-radio" type="radio" name={`dupkeep-${group.id}`} value={index} checked={group.selectedIndex === index} disabled={disabled} onChange={() => onChoose(group.id, index)} aria-label={`Keep ${file.path}`} />

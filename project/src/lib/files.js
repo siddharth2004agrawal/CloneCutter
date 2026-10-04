@@ -39,11 +39,11 @@ export function pickKeepIndex(files, type = 'oldest') {
 }
 
 export function initializeGroups(groups) {
-  return groups.map((group) => ({ ...group, selectedIndex: pickKeepIndex(group.files) }));
+  return groups.map((group) => ({ ...group, selectedIndex: pickKeepIndex(group.files), deleteIndices: [] }));
 }
 
 export function copiesToRemove(groups) {
-  return groups.flatMap((group) => group.files.filter((_, i) => i !== group.selectedIndex));
+  return groups.flatMap((group) => group.files.filter((_, i) => i !== group.selectedIndex && group.deleteIndices.includes(i)));
 }
 
 export async function readFolderFiles(handle, folderId, prefix = handle.name) {

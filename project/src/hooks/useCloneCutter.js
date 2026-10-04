@@ -1,12 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
 import { discoverApi, requestJson } from '../lib/api.js';
-import { copiesToRemove, countFiles, initializeGroups, pickKeepIndex, readFolderFiles } from '../lib/files.js';
+import { copiesToRemove, formatBytes, initializeGroups, pickKeepIndex } from '../lib/files.js';
+
+function pause(signal) {
+  return new Promise((resolve, reject) => {
+    const aborted = () => {
+      clearTimeout(timer);
+      reject(new DOMException('Scan cancelled', 'AbortError'));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', aborted);
+      resolve();
+    }, 500);
+    if (signal.aborted) aborted();
+    else signal.addEventListener('abort', aborted, { once: true });
+  });
+}
 
 export default function useCloneCutter() {
-  const [folders, setFolders] = useState([]);
-  const [serverRoots, setServerRoots] = useState([]);
-  const [fileTypes, setFileTypes] = useState(['image', 'video', 'audio', 'document', 'archive']);
-  const [api, setApi] = useState({ available: false, base: '', checking: true });
+  const [fileTypes, setFileTypes] = useState(['image', 'video', 'audio', 'document', 'archive', 'all']);
+  const [api, setApi] = useState({ available: false, base: '', checking: true, canTrash: false });
   const [duplicates, setDuplicates] = useState([]);
   const [totalFiles, setTotalFiles] = useState(0);
   const [scanSource, setScanSource] = useState(null);
@@ -14,13 +27,13 @@ export default function useCloneCutter() {
   const [progress, setProgress] = useState({ value: 0, message: 'Ready to scan…' });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [cleared, setCleared] = useState({ bytes: 0, files: 0 });
+  const [cancelling, setCancelling] = useState(false);
   const busyRef = useRef(false);
-  const workerRef = useRef(null);
   const apiProbeRef = useRef(null);
   const scanAbortRef = useRef(null);
-  const sourceFilesRef = useRef(new Map());
+  const activeScanRef = useRef(null);
   const mountedRef = useRef(true);
-  const pickerSupported = typeof window.showDirectoryPicker === 'function';
 
   async function connectApi() {
     apiProbeRef.current?.abort();
@@ -30,8 +43,8 @@ export default function useCloneCutter() {
     try {
       const found = await discoverApi(controller.signal);
       if (!controller.signal.aborted) setApi({ ...found, checking: false });
-    } catch (error) {
-      if (!controller.signal.aborted) setApi({ available: false, base: '', checking: false });
+    } catch {
+      if (!controller.signal.aborted) setApi({ available: false, base: '', checking: false, canTrash: false });
     }
   }
 
@@ -42,66 +55,10 @@ export default function useCloneCutter() {
       mountedRef.current = false;
       apiProbeRef.current?.abort();
       scanAbortRef.current?.abort();
-      if (workerRef.current) {
-        workerRef.current.worker.terminate();
-        workerRef.current.reject(new DOMException('Scan cancelled', 'AbortError'));
-        workerRef.current = null;
-      }
+      const active = activeScanRef.current;
+      if (active) void requestJson(active.base, '/api/scan/cancel', { scanId: active.id }).catch(() => {});
     };
   }, []);
-
-  async function selectFolder() {
-    if (busyRef.current) return;
-    if (!pickerSupported || !window.isSecureContext) {
-      setError('Use the fallback folder chooser or server mode, or open this app on localhost in Chrome/Edge.');
-      return;
-    }
-    busyRef.current = true;
-    setPhase('selecting');
-    setError('');
-    try {
-      let handle;
-      try {
-        handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-      } catch (first) {
-        if (first.name === 'AbortError') return;
-        handle = await window.showDirectoryPicker({ mode: 'read' });
-      }
-      for (const folder of folders) {
-        if (folder.handle && await folder.handle.isSameEntry(handle)) return;
-      }
-      const fileCount = await countFiles(handle);
-      setFolders((previous) => [...previous, {
-        id: crypto.randomUUID(), name: handle.name, handle, mode: 'handles', fileCount,
-      }]);
-    } catch (error) {
-      if (error.name !== 'AbortError') setError(`Folder selection failed: ${error.message}`);
-    } finally {
-      busyRef.current = false;
-      if (mountedRef.current) setPhase(scanSource ? 'results' : 'idle');
-    }
-  }
-
-  function addFallbackFolder(event) {
-    const input = event.target;
-    const files = Array.from(input.files || []);
-    if (files.length && !busyRef.current) {
-      const id = crypto.randomUUID();
-      const firstPath = files[0].webkitRelativePath || files[0].name;
-      const name = firstPath.includes('/') ? firstPath.split('/')[0] : 'folder';
-      const fileEntries = files.map((file) => {
-        const path = file.webkitRelativePath || `${name}/${file.name}`;
-        return { id: `${id}/${path}`, path, file };
-      });
-      setFolders((previous) => [...previous, { id, name, mode: 'filelist', fileCount: files.length, fileEntries }]);
-    }
-    input.value = '';
-  }
-
-  function addServerPath(path) {
-    const trimmed = path.trim();
-    if (trimmed) setServerRoots((previous) => previous.includes(trimmed) ? previous : [...previous, trimmed]);
-  }
 
   function toggleFileType(type, checked) {
     if (type === 'all') {
@@ -113,181 +70,139 @@ export default function useCloneCutter() {
     }
   }
 
-  function scanWithWorker(files, selectedTypes) {
-    return new Promise((resolve, reject) => {
-      const worker = new Worker(new URL('../worker.js', import.meta.url), { type: 'module' });
-      workerRef.current = { worker, reject };
-      const finish = (callback, value) => {
-        worker.terminate();
-        workerRef.current = null;
-        callback(value);
-      };
-      worker.onmessage = ({ data }) => {
-        if (data.type === 'progress') setProgress({ value: data.progress, message: data.message });
-        if (data.type === 'complete') finish(resolve, data);
-        if (data.type === 'error') finish(reject, new Error(data.message));
-      };
-      worker.onerror = (event) => finish(reject, new Error(event.message || 'Scan failed. Please try again.'));
-      try {
-        // Parent directory handles stay on the main thread for deletion.
-        worker.postMessage({
-          action: 'scan',
-          files: files.map(({ id, path, handle, file }) => ({ id, path, handle, file })),
-          fileTypes: selectedTypes,
-        });
-      } catch (error) {
-        finish(reject, error);
-      }
-    });
-  }
-
-  async function runScan(source) {
-    setPhase('scanning');
-    setProgress({ value: 0, message: 'Preparing scan…' });
-    scanAbortRef.current = new AbortController();
-    let result;
-    if (source.mode === 'server') {
-      setProgress({ value: 5, message: 'Scanning on server…' });
-      result = await requestJson(source.base, '/api/scan', {
-        roots: source.roots, file_types: source.fileTypes,
-      }, scanAbortRef.current.signal);
-    } else {
-      const files = [];
-      for (const folder of source.folders) {
-        files.push(...(folder.mode === 'filelist'
-          ? folder.fileEntries
-          : await readFolderFiles(folder.handle, folder.id)));
-      }
-      if (!mountedRef.current) throw new DOMException('Scan cancelled', 'AbortError');
-      sourceFilesRef.current = new Map(files.map((file) => [file.id, file]));
-      result = await scanWithWorker(files, source.fileTypes);
-    }
-    if (!mountedRef.current) return;
-    setDuplicates(initializeGroups(result.duplicates || []));
-    setTotalFiles(result.totalFiles || 0);
-    setScanSource(source);
-    setProgress({ value: 100, message: 'Scan complete.' });
-    setPhase('results');
-  }
-
   async function startScan() {
-    if (busyRef.current || fileTypes.length === 0) return;
-    const selectedTypes = fileTypes.includes('all') ? ['all'] : [...fileTypes];
-    const source = api.available && serverRoots.length
-      ? { mode: 'server', roots: [...serverRoots], base: api.base, fileTypes: selectedTypes }
-      : { mode: 'browser', folders: [...folders], fileTypes: selectedTypes };
-    if (source.mode === 'browser' && !source.folders.length) return;
+    if (busyRef.current || !api.available || !fileTypes.length) return;
     busyRef.current = true;
     setError('');
     setNotice('');
-    // Previous results become invalid as soon as a new scan starts.
     setScanSource(null);
     setDuplicates([]);
+    setTotalFiles(0);
+    setCancelling(false);
+    setPhase('scanning');
+    setProgress({ value: 0, message: 'Preparing a whole-filesystem scan…' });
+    const controller = new AbortController();
+    scanAbortRef.current = controller;
+    let active;
     try {
-      await runScan(source);
+      const started = await requestJson(api.base, '/api/scan', {
+        scope: 'filesystem', file_types: fileTypes.includes('all') ? ['all'] : [...fileTypes],
+      }, controller.signal);
+      active = { id: started.scanId, base: api.base };
+      activeScanRef.current = active;
+      while (!controller.signal.aborted) {
+        const result = await requestJson(active.base, `/api/scan?id=${encodeURIComponent(active.id)}`, undefined, controller.signal);
+        if (!mountedRef.current) return;
+        if (result.progress) setProgress(result.progress);
+        if (result.status === 'cancelled') {
+          setNotice('Scan cancelled. Start a new scan when you are ready.');
+          setPhase('idle');
+          return;
+        }
+        if (result.status === 'error') throw new Error(result.error || 'Scan failed.');
+        if (result.status === 'complete') {
+          setDuplicates(initializeGroups(result.duplicates || []));
+          setTotalFiles(result.totalFiles || 0);
+          setScanSource({ mode: 'server', base: active.base, scanId: active.id, roots: result.roots, skipped: result.skipped || 0 });
+          setPhase('results');
+          return;
+        }
+        await pause(controller.signal);
+      }
     } catch (error) {
+      if (active) void requestJson(active.base, '/api/scan/cancel', { scanId: active.id }).catch(() => {});
       if (mountedRef.current && error.name !== 'AbortError') {
         setError(error.message || 'Scan failed. Please try again.');
         setPhase('idle');
       }
     } finally {
+      activeScanRef.current = null;
       busyRef.current = false;
+      if (mountedRef.current) setCancelling(false);
     }
   }
 
-  const scanOnly = scanSource?.mode === 'browser' && scanSource.folders.some((folder) => folder.mode === 'filelist');
-  const deleteAllowed = Boolean(scanSource && (scanSource.mode === 'server'
-    ? api.available
-    : pickerSupported && !scanOnly && scanSource.folders.some((folder) => folder.handle)));
+  async function cancelScan() {
+    const active = activeScanRef.current;
+    if (!active || cancelling) return;
+    setCancelling(true);
+    try {
+      await requestJson(active.base, '/api/scan/cancel', { scanId: active.id });
+    } catch (error) {
+      setError(`Could not cancel scan: ${error.message}`);
+      setCancelling(false);
+    }
+  }
 
   function chooseCopy(groupId, selectedIndex) {
-    setDuplicates((previous) => previous.map((group) => group.id === groupId ? { ...group, selectedIndex } : group));
+    setDuplicates((previous) => previous.map((group) => group.id === groupId
+      ? { ...group, selectedIndex, deleteIndices: group.deleteIndices.filter((index) => index !== selectedIndex) }
+      : group));
   }
 
   function chooseAll(type) {
-    setDuplicates((previous) => previous.map((group) => ({ ...group, selectedIndex: pickKeepIndex(group.files, type) })));
+    setDuplicates((previous) => previous.map((group) => {
+      const selectedIndex = pickKeepIndex(group.files, type);
+      return { ...group, selectedIndex, deleteIndices: group.deleteIndices.filter((index) => index !== selectedIndex) };
+    }));
   }
 
-  async function removeCopies() {
-    if (busyRef.current || !deleteAllowed) return;
-    const toRemove = copiesToRemove(duplicates);
-    if (!toRemove.length) return;
-    const serverMode = scanSource.mode === 'server';
-    const confirmed = window.confirm(serverMode
-      ? `Send ${toRemove.length} file(s) to the Recycle Bin?\n\nThe selected copy in each group will be kept.`
-      : `Permanently delete ${toRemove.length} duplicate file(s) from disk?\n\nThe selected copy in each group will be kept. This cannot be undone from the browser.`);
-    if (!confirmed) return;
+  function toggleCopy(groupId, index, checked) {
+    setDuplicates((previous) => previous.map((group) => group.id === groupId && index !== group.selectedIndex
+      ? { ...group, deleteIndices: checked ? [...new Set([...group.deleteIndices, index])] : group.deleteIndices.filter((value) => value !== index) }
+      : group));
+  }
 
+  function selectCopies(checked) {
+    setDuplicates((previous) => previous.map((group) => ({ ...group,
+      deleteIndices: checked ? group.files.map((_, index) => index).filter((index) => index !== group.selectedIndex) : [],
+    })));
+  }
+
+  const deleteAllowed = Boolean(scanSource && api.available && api.canTrash);
+  const selectedFiles = copiesToRemove(duplicates);
+
+  async function removeCopies() {
+    if (busyRef.current || !deleteAllowed || !selectedFiles.length) return;
+    if (!window.confirm(`Move ${selectedFiles.length} selected duplicate file(s) to Trash / Recycle Bin?\n\nAt least one identical copy in each group will be kept.`)) return;
     busyRef.current = true;
+    setPhase('deleting');
+    setProgress({ value: 0, message: 'Verifying copies and moving selected files to Trash…' });
     setError('');
     setNotice('');
-    const source = scanSource;
-    let deleted = 0;
-    let failed = false;
-    let attempted = false;
     try {
-      if (!serverMode) {
-        for (const folder of source.folders) {
-          if (!folder.handle) continue;
-          const permission = await folder.handle.queryPermission({ mode: 'readwrite' });
-          if (permission !== 'granted' && await folder.handle.requestPermission({ mode: 'readwrite' }) !== 'granted') {
-            throw new Error('Write permission is required to delete files. Grant access or re-select the folder.');
-          }
-        }
-      }
-      setPhase('deleting');
-      setProgress({ value: 0, message: serverMode ? 'Sending to Recycle Bin…' : 'Removing duplicates…' });
-      attempted = true;
-      if (serverMode) {
-        const result = await requestJson(source.base, '/api/move', { paths: toRemove.map((file) => file.path) });
-        deleted = result.moved?.length || 0;
-        if (result.errors?.length) {
-          failed = true;
-          setError(`${result.errors.length} file(s) could not be moved. ${result.errors[0].error}`);
-        }
-      } else {
-        for (const file of toRemove) {
-          const original = sourceFilesRef.current.get(file.id);
-          if (!original?.parentHandle) throw new Error(`Missing directory handle for ${file.path}`);
-          await original.parentHandle.removeEntry(original.fileName, { recursive: false });
-          deleted += 1;
-          setProgress({ value: Math.round(deleted / toRemove.length * 100), message: `Deleting ${deleted}/${toRemove.length}…` });
-        }
-      }
-      setNotice(serverMode
-        ? `Moved ${deleted} file(s) to the system Recycle Bin. Restore them using your system's trash.`
-        : `Removed ${deleted} duplicate file(s).`);
+      const result = await requestJson(scanSource.base, '/api/move', {
+        scanId: scanSource.scanId, paths: selectedFiles.map((file) => file.path),
+      });
+      if (!mountedRef.current) return;
+      const moved = new Set(result.moved || []);
+      const movedBytes = selectedFiles.reduce((sum, file) => sum + (moved.has(file.path) ? file.size : 0), 0);
+      setCleared((previous) => ({ bytes: previous.bytes + movedBytes, files: previous.files + moved.size }));
+      setDuplicates((previous) => previous.map((group) => {
+        const keeper = group.files[group.selectedIndex].path;
+        const files = group.files.filter((file) => !moved.has(file.path));
+        return { ...group, files, selectedIndex: files.findIndex((file) => file.path === keeper), deleteIndices: [] };
+      }).filter((group) => group.files.length > 1));
+      setNotice(`Moved ${moved.size} file(s) (${formatBytes(movedBytes)}) to Trash / Recycle Bin. You can restore them from your system's trash.`);
+      if (result.errors?.length) setError(`${result.errors.length} file(s) could not be deleted. ${result.errors[0].error}`);
     } catch (error) {
-      failed = true;
-      setError(`Deletion failed: ${error.message}${deleted ? ` (${deleted} file(s) already removed.)` : ''}`);
-    } finally {
-      // Refresh even after a partial failure; never present stale copies as deletable.
-      if (attempted && mountedRef.current) {
+      if (mountedRef.current) {
+        // The response may have been lost after files were moved. Require fresh results.
         setScanSource(null);
         setDuplicates([]);
-        try {
-          await runScan(source);
-        } catch (error) {
-          if (mountedRef.current) {
-            setError((previous) => `${previous ? `${previous} ` : ''}Rescan failed: ${error.message}`);
-            setPhase('idle');
-          }
-        }
-      } else if (mountedRef.current) {
-        setPhase('results');
+        setError(`Deletion failed: ${error.message} Scan again to refresh the file list.`);
       }
+    } finally {
       busyRef.current = false;
-      if (failed && deleted && mountedRef.current) setNotice(`Removed ${deleted} file(s) before the error.`);
+      if (mountedRef.current) setPhase('results');
     }
   }
 
-  const busy = ['selecting', 'scanning', 'deleting'].includes(phase);
+  const busy = phase === 'scanning' || phase === 'deleting';
   return {
-    folders, serverRoots, fileTypes, api, duplicates, totalFiles, scanSource, scanOnly,
-    phase, progress, error, notice, busy, pickerSupported, deleteAllowed,
-    canScan: !busy && fileTypes.length > 0 && (folders.length > 0 || (api.available && serverRoots.length > 0)),
-    connectApi, selectFolder, addFallbackFolder, addServerPath, toggleFileType, startScan, chooseCopy, chooseAll, removeCopies,
-    removeFolder: (id) => setFolders((previous) => previous.filter((folder) => folder.id !== id)),
-    removeServerPath: (path) => setServerRoots((previous) => previous.filter((root) => root !== path)),
+    fileTypes, api, duplicates, totalFiles, scanSource, phase, progress, error, notice, cleared, busy,
+    deleteAllowed, selectedCount: selectedFiles.length, selectedBytes: selectedFiles.reduce((sum, file) => sum + file.size, 0),
+    canScan: !busy && api.available && fileTypes.length > 0,
+    cancelling, connectApi, toggleFileType, startScan, cancelScan, chooseCopy, chooseAll, toggleCopy, selectCopies, removeCopies,
   };
 }

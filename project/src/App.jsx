@@ -3,10 +3,10 @@ import FolderControls from './components/FolderControls.jsx';
 import ScanResults from './components/ScanResults.jsx';
 import ServerPanel from './components/ServerPanel.jsx';
 import Icon from './components/Icon.jsx';
+import { formatBytes } from './lib/files.js';
 
 export default function App() {
   const app = useCloneCutter();
-  const needsContext = !app.pickerSupported || !window.isSecureContext || window.location.protocol === 'file:';
   const working = app.phase === 'scanning' || app.phase === 'deleting';
 
   return (
@@ -18,7 +18,7 @@ export default function App() {
         </div>
         <div className={`connection-status${app.api.available ? ' connected' : ''}`} role="status">
           <span className="status-dot" />
-          {app.api.checking ? 'Connecting…' : app.api.available ? 'API connected' : 'Browser mode'}
+          {app.api.checking ? 'Connecting…' : app.api.available ? 'Local server connected' : 'Local server offline'}
         </div>
       </header>
 
@@ -26,7 +26,7 @@ export default function App() {
         <div>
           <p className="eyebrow">A cleaner digital space</p>
           <h2>Keep what matters.</h2>
-          <p className="intro-description">Find identical files, choose the copy you love,<br className="desktop-break" /> and make a little more room.</p>
+          <p className="intro-description">Find identical files across your whole filesystem,<br className="desktop-break" /> select extra copies, and make a little more room.</p>
         </div>
         <div className="intro-detail">
           <Icon name="layers" size={20} />
@@ -34,18 +34,20 @@ export default function App() {
         </div>
       </section>
 
-      {needsContext && (
-        <div id="envWarning" className="env-warning" role="status">
-          <strong>More ways to scan.</strong>{' '}
-          Use the folder upload to find duplicates, or connect the local server to move extra copies to the Recycle Bin.
-        </div>
-      )}
-
       {app.error && <div className="app-message app-error" role="alert">{app.error}</div>}
       {app.notice && <div className="app-message app-notice" role="status">{app.notice}</div>}
 
+      <section className="cleared-summary" aria-label="Total space cleared" role="status" aria-live="polite" aria-atomic="true">
+        <div>
+          <p className="eyebrow">Total space cleared</p>
+          <p id="totalSpaceCleared" className="cleared-total">{formatBytes(app.cleared.bytes)}</p>
+          <p className="cleared-files">{app.cleared.files.toLocaleString()} duplicate {app.cleared.files === 1 ? 'file' : 'files'} moved this session</p>
+        </div>
+        <p className="cleared-note">Total size of copies moved to Trash / Recycle Bin.<br />Empty your system’s Trash to reclaim disk space.</p>
+      </section>
+
       <div className={`workspace-grid${working ? ' is-working' : ''}`}>
-        {!working && <FolderControls app={app} showFallback={needsContext} />}
+        {!working && <FolderControls app={app} />}
         <ServerPanel app={app} />
       </div>
 
@@ -58,6 +60,7 @@ export default function App() {
             <div id="progressFill" className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, app.progress.value))}%` }} />
           </div>
           <div id="progressText" className="progress-text" role="status">{app.progress.message}</div>
+          {app.phase === 'scanning' && <button className="btn-secondary cancel-scan" type="button" onClick={app.cancelScan} disabled={app.cancelling}>{app.cancelling ? 'Cancelling…' : 'Cancel scan'}</button>}
         </section>
       )}
 
