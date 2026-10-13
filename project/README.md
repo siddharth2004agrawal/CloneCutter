@@ -21,9 +21,9 @@ For development, keep the Python server running and run `npm run dev` in another
 ## Scan and delete copies
 
 1. Choose **Whole filesystem** and click **Scan filesystem**, or choose **Selected folders**, click **Browse folders**, navigate to a folder, and click **Select this folder**. Add more folders if needed, then click **Scan selected folders**. The browser also accepts absolute folder paths. All file types are included by default; filters can narrow the scan.
-2. Review matching groups with filenames, full paths, sizes, and modification dates. The oldest copy is marked **Keep** by default; choose another retained copy if needed.
-3. Check individual **Delete** boxes, or click **Select all copies** to select every extra copy while preserving the retained file in each group.
-4. Click **Delete selected** and confirm. Files go to the system Trash / Recycle Bin. Restore them there if needed.
+2. After the scan, review the duplicate files with filenames, full paths, sizes, and modification dates. Nothing is selected for deletion initially.
+3. Check the **Delete** boxes for the files you want to remove, or check **Select all** to select every extra copy across all result pages. Unselected files stay where they are. At least one identical copy must remain in each group. Select all leaves the oldest unselected copy in each group and preserves your existing manual selections. Uncheck individual files or use **Clear selection** to change your selection.
+4. Click **Delete selected** and review the confirmation showing the selected count, total size, and up to ten file paths. Confirm to move the chosen files to **Recycle Bin** on Windows or **Trash** on macOS/Linux. The local server uses `send2trash` to perform the native operation. If Trash access fails, the file stays in place and an error is shown. Restore moved files from the operating system’s Trash / Recycle Bin if needed.
 
 The server scans `/` on Linux/macOS (including mounted drives) and available drive letters on Windows, using the current account's permissions. It skips virtual system directories (`/proc`, `/sys`, `/dev`, `/run`), symbolic links, Trash directories, and inaccessible paths. Hard links are counted once because they share storage. Whole-filesystem scans can take a while; progress and cancellation are available.
 

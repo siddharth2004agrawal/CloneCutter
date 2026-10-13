@@ -111,6 +111,7 @@ class FilesystemTests(unittest.TestCase):
         result = self.move([self.copy])
         self.assertEqual(result['moved'], [str(self.copy)])
         self.assertEqual(result['errors'], [])
+        self.assertEqual(result['trashName'], server.trash_name())
         self.assertTrue(self.original.exists())
         self.assertTrue(self.other_copy.exists())
         self.assertFalse(self.copy.exists())
@@ -181,6 +182,16 @@ class FilesystemTests(unittest.TestCase):
         self.assertIn('No trash access', result['errors'][0]['error'])
         self.assertTrue(self.copy.exists())
         self.assertTrue(self.original.exists())
+
+    def test_missing_trash_support_keeps_all_files(self):
+        self.prepare()
+        with patch.object(server, 'HAS_SEND2TRASH', False), patch.object(server, 'send2trash') as trash:
+            with self.assertRaisesRegex(ValueError, 'Install send2trash'):
+                server.recycle_paths([str(self.copy)], 'test-scan')
+            trash.assert_not_called()
+        self.assertTrue(self.original.exists())
+        self.assertTrue(self.copy.exists())
+        self.assertTrue(self.other_copy.exists())
 
     def request(self, method, path, data=None):
         """Exercise HTTP routing without binding a port or scanning host files."""
@@ -300,6 +311,13 @@ class FilesystemTests(unittest.TestCase):
             _, health = self.request('GET', '/api/clonecutter-health')
         self.assertTrue(health['filesystemScan'])
         self.assertFalse(health['canTrash'])
+
+    def test_health_names_native_trash_using_server_os(self):
+        for platform, expected in [('win32', 'Recycle Bin'), ('darwin', 'Trash'), ('linux', 'Trash')]:
+            with self.subTest(platform=platform), patch.object(server.sys, 'platform', platform):
+                code, health = self.request('GET', '/api/clonecutter-health')
+                self.assertEqual(code, 200)
+                self.assertEqual(health['trashName'], expected)
 
     def test_running_job_can_be_cancelled_and_rejects_concurrent_scan(self):
         started = threading.Event()

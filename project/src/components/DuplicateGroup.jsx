@@ -3,7 +3,7 @@ import { basename, formatBytes, formatDate } from '../lib/files.js';
 import FilePreview from './FilePreview.jsx';
 import Icon from './Icon.jsx';
 
-export default function DuplicateGroup({ group, onChoose, onToggle, serverBase, disabled }) {
+export default function DuplicateGroup({ group, onToggle, serverBase, trashName, disabled }) {
   const [expanded, setExpanded] = useState(true);
   const extra = group.files.length - 1;
   const firstName = basename(group.files[0].path);
@@ -23,21 +23,19 @@ export default function DuplicateGroup({ group, onChoose, onToggle, serverBase, 
         <button className={`group-toggle${expanded ? ' is-expanded' : ''}`} type="button" aria-label={`Toggle copies of ${firstName}`} aria-expanded={expanded} aria-controls={filesId}><Icon name="chevron" size={17} /></button>
       </div>
       <div id={filesId} className={`group-files${expanded ? ' expanded' : ''}`} hidden={!expanded}>
+        <p className="group-choice-note">{group.deleteIndices.length} selected to delete · {group.files.length - group.deleteIndices.length} will stay. At least one copy must remain.</p>
         {group.files.map((file, index) => (
-          <div className={`file-item${group.selectedIndex === index ? ' selected' : ''}${group.deleteIndices.includes(index) ? ' for-deletion' : ''}`} key={file.id || file.path}>
-            <label className="delete-cell">
-              <input className="file-checkbox" type="checkbox" checked={group.deleteIndices.includes(index)} disabled={disabled || group.selectedIndex === index} onChange={(event) => onToggle(group.id, index, event.target.checked)} aria-label={`Delete ${file.path}`} />
+          <div className={`file-item${group.deleteIndices.includes(index) ? ' for-deletion' : ''}`} key={file.id || file.path}>
+            <label className="delete-cell" title={!group.deleteIndices.includes(index) && group.deleteIndices.length === group.files.length - 1 ? 'At least one identical copy must remain. Uncheck another file to select this one.' : `Move this file to ${trashName}`}>
+              <input className="file-checkbox" type="checkbox" checked={group.deleteIndices.includes(index)} disabled={disabled || (!group.deleteIndices.includes(index) && group.deleteIndices.length === group.files.length - 1)} onChange={(event) => onToggle(group.id, index, event.target.checked)} aria-label={`Select ${file.path} for deletion`} />
               <span>Delete</span>
             </label>
             <FilePreview file={file} serverBase={serverBase} />
-            <label className="keep-cell">
-              <input className="keep-radio" type="radio" name={`dupkeep-${group.id}`} value={index} checked={group.selectedIndex === index} disabled={disabled} onChange={() => onChoose(group.id, index)} aria-label={`Keep ${file.path}`} />
-              <span>Keep</span>
-            </label>
             <div className="file-info">
               <div className="file-name">{basename(file.path)}</div>
               <div className="file-details">{file.path}</div>
               <div className="file-meta">Modified {formatDate(file.lastModified)}</div>
+              <div className="file-decision">{group.deleteIndices.includes(index) ? `Will move to ${trashName}` : 'Will stay'}</div>
             </div>
             <div className="file-size">{formatBytes(file.size)}</div>
           </div>

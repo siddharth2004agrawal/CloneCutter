@@ -19,7 +19,10 @@ export async function discoverApi(signal) {
     try {
       const timeout = AbortSignal.timeout(2500);
       const data = await requestJson(base, '/api/clonecutter-health', undefined, AbortSignal.any([signal, timeout]));
-      if (data.ok === true && data.filesystemScan === true) return { available: true, base, canTrash: data.canTrash === true };
+      if (data.ok === true && data.filesystemScan === true) return {
+        available: true, base, canTrash: data.canTrash === true,
+        trashName: ['Trash', 'Recycle Bin'].includes(data.trashName) ? data.trashName : 'Trash / Recycle Bin',
+      };
     } catch (error) {
       if (signal.aborted) throw error;
     }

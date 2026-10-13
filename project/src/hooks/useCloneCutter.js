@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { discoverApi, requestJson } from '../lib/api.js';
-import { copiesToRemove, formatBytes, initializeGroups, pickKeepIndex } from '../lib/files.js';
+import { copiesToRemove, formatBytes, initializeGroups, removeMovedFiles, selectGroupCopies, setCopyDelete } from '../lib/files.js';
 
 function pause(signal) {
   return new Promise((resolve, reject) => {
@@ -137,40 +137,28 @@ export default function useCloneCutter() {
     }
   }
 
-  function chooseCopy(groupId, selectedIndex) {
-    setDuplicates((previous) => previous.map((group) => group.id === groupId
-      ? { ...group, selectedIndex, deleteIndices: group.deleteIndices.filter((index) => index !== selectedIndex) }
-      : group));
-  }
-
-  function chooseAll(type) {
-    setDuplicates((previous) => previous.map((group) => {
-      const selectedIndex = pickKeepIndex(group.files, type);
-      return { ...group, selectedIndex, deleteIndices: group.deleteIndices.filter((index) => index !== selectedIndex) };
-    }));
-  }
-
   function toggleCopy(groupId, index, checked) {
-    setDuplicates((previous) => previous.map((group) => group.id === groupId && index !== group.selectedIndex
-      ? { ...group, deleteIndices: checked ? [...new Set([...group.deleteIndices, index])] : group.deleteIndices.filter((value) => value !== index) }
+    setDuplicates((previous) => previous.map((group) => group.id === groupId
+      ? setCopyDelete(group, index, checked)
       : group));
   }
 
   function selectCopies(checked) {
-    setDuplicates((previous) => previous.map((group) => ({ ...group,
-      deleteIndices: checked ? group.files.map((_, index) => index).filter((index) => index !== group.selectedIndex) : [],
-    })));
+    setDuplicates((previous) => previous.map((group) => selectGroupCopies(group, checked)));
   }
 
   const deleteAllowed = Boolean(scanSource && api.available && api.canTrash);
   const selectedFiles = copiesToRemove(duplicates);
+  const trashName = api.trashName || 'Trash / Recycle Bin';
 
   async function removeCopies() {
     if (busyRef.current || !deleteAllowed || !selectedFiles.length) return;
-    if (!window.confirm(`Move ${selectedFiles.length} selected duplicate file(s) to Trash / Recycle Bin?\n\nAt least one identical copy in each group will be kept.`)) return;
+    const preview = selectedFiles.slice(0, 10).map((file) => file.path).join('\n');
+    const more = selectedFiles.length > 10 ? `\n…and ${selectedFiles.length - 10} more selected file(s).` : '';
+    if (!window.confirm(`Move ${selectedFiles.length} selected duplicate file(s) (${formatBytes(selectedFiles.reduce((sum, file) => sum + file.size, 0))}) to ${trashName}?\n\n${preview}${more}\n\nUnselected files will stay. At least one identical copy in each group will remain. You can restore moved files from ${trashName}.`)) return;
     busyRef.current = true;
     setPhase('deleting');
-    setProgress({ value: 0, message: 'Verifying copies and moving selected files to Trash…' });
+    setProgress({ value: 0, message: `Verifying copies and moving selected files to ${trashName}…` });
     setError('');
     setNotice('');
     try {
@@ -181,12 +169,9 @@ export default function useCloneCutter() {
       const moved = new Set(result.moved || []);
       const movedBytes = selectedFiles.reduce((sum, file) => sum + (moved.has(file.path) ? file.size : 0), 0);
       setCleared((previous) => ({ bytes: previous.bytes + movedBytes, files: previous.files + moved.size }));
-      setDuplicates((previous) => previous.map((group) => {
-        const keeper = group.files[group.selectedIndex].path;
-        const files = group.files.filter((file) => !moved.has(file.path));
-        return { ...group, files, selectedIndex: files.findIndex((file) => file.path === keeper), deleteIndices: [] };
-      }).filter((group) => group.files.length > 1));
-      setNotice(`Moved ${moved.size} file(s) (${formatBytes(movedBytes)}) to Trash / Recycle Bin. You can restore them from your system's trash.`);
+      setDuplicates((previous) => previous.map((group) => removeMovedFiles(group, moved)).filter((group) => group.files.length > 1));
+      const destination = result.trashName || trashName;
+      setNotice(`Moved ${moved.size} file(s) (${formatBytes(movedBytes)}) to ${destination}. You can restore them from your system's ${destination}.`);
       if (result.errors?.length) setError(`${result.errors.length} file(s) could not be deleted. ${result.errors[0].error}`);
     } catch (error) {
       if (mountedRef.current) {
@@ -206,9 +191,9 @@ export default function useCloneCutter() {
     scope, setScope, folders,
     addFolder: (path) => setFolders((previous) => [...new Set([...previous, path])]),
     removeFolder: (path) => setFolders((previous) => previous.filter((folder) => folder !== path)),
-    fileTypes, api, duplicates, totalFiles, scanSource, phase, progress, error, notice, cleared, busy,
+    fileTypes, api, trashName, duplicates, totalFiles, scanSource, phase, progress, error, notice, cleared, busy,
     deleteAllowed, selectedCount: selectedFiles.length, selectedBytes: selectedFiles.reduce((sum, file) => sum + file.size, 0),
     canScan: !busy && api.available && fileTypes.length > 0 && (scope === 'filesystem' || folders.length > 0),
-    cancelling, connectApi, toggleFileType, startScan, cancelScan, chooseCopy, chooseAll, toggleCopy, selectCopies, removeCopies,
+    cancelling, connectApi, toggleFileType, startScan, cancelScan, toggleCopy, selectCopies, removeCopies,
   };
 }

@@ -39,11 +39,37 @@ export function pickKeepIndex(files, type = 'oldest') {
 }
 
 export function initializeGroups(groups) {
-  return groups.map((group) => ({ ...group, selectedIndex: pickKeepIndex(group.files), deleteIndices: [] }));
+  return groups.map((group) => ({ ...group, deleteIndices: [] }));
 }
 
 export function copiesToRemove(groups) {
-  return groups.flatMap((group) => group.files.filter((_, i) => i !== group.selectedIndex && group.deleteIndices.includes(i)));
+  return groups.flatMap((group) => {
+    const selected = group.files.filter((_, index) => group.deleteIndices.includes(index));
+    return selected.length < group.files.length ? selected : [];
+  });
+}
+
+export function setCopyDelete(group, index, checked) {
+  if (!group.files[index]) return group;
+  const deleteIndices = checked
+    ? [...new Set([...group.deleteIndices, index])]
+    : group.deleteIndices.filter((value) => value !== index);
+  if (deleteIndices.length >= group.files.length) return group;
+  return { ...group, deleteIndices };
+}
+
+export function selectGroupCopies(group, checked) {
+  if (!checked) return { ...group, deleteIndices: [] };
+  // Preserve manual choices, leaving the oldest unselected copy in each group.
+  const remaining = group.files.flatMap((file, index) => group.deleteIndices.includes(index) ? [] : [{ file, index }]);
+  const keepIndex = remaining.length
+    ? remaining[pickKeepIndex(remaining.map(({ file }) => file))].index : pickKeepIndex(group.files);
+  return { ...group, deleteIndices: group.files.map((_, index) => index).filter((index) => index !== keepIndex) };
+}
+
+export function removeMovedFiles(group, moved) {
+  const files = group.files.filter((file) => !moved.has(file.path));
+  return { ...group, files, deleteIndices: [] };
 }
 
 export async function readFolderFiles(handle, folderId, prefix = handle.name) {

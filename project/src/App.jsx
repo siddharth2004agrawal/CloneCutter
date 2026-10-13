@@ -43,7 +43,7 @@ export default function App() {
           <p id="totalSpaceCleared" className="cleared-total">{formatBytes(app.cleared.bytes)}</p>
           <p className="cleared-files">{app.cleared.files.toLocaleString()} duplicate {app.cleared.files === 1 ? 'file' : 'files'} moved this session</p>
         </div>
-        <p className="cleared-note">Total size of copies moved to Trash / Recycle Bin.<br />Empty your system’s Trash to reclaim disk space.</p>
+        <p className="cleared-note">Total size of copies moved to {app.trashName}.<br />Empty your system’s {app.trashName} to reclaim disk space.</p>
       </section>
 
       <div className={`workspace-grid${working ? ' is-working' : ''}`}>

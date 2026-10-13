@@ -47,6 +47,10 @@ class ScanCancelled(Exception):
     pass
 
 
+def trash_name():
+    return "Recycle Bin" if sys.platform == "win32" else "Trash"
+
+
 def filesystem_roots() -> list[str]:
     if os.name == "nt":
         import ctypes
@@ -245,7 +249,7 @@ def recycle_paths(paths, scan_id):
                 LAST_SCAN_PATHS.discard(path)
             except Exception as error:
                 errors.append({"path": path, "error": str(error)})
-    return {"moved": moved, "errors": errors}
+    return {"moved": moved, "errors": errors, "trashName": trash_name()}
 
 
 def start_scan(roots, file_types):
@@ -319,7 +323,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/clonecutter-health":
-            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "filesystemScan": True, "folderScan": True})
+            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "trashName": trash_name(), "filesystemScan": True, "folderScan": True})
             return
         if parsed.path == "/api/folders":
             try:

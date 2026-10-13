@@ -7,7 +7,7 @@ export default function ServerPanel({ app }) {
         <div><p className="eyebrow">On your computer</p><h3>Local connection</h3></div>
         <span className="section-symbol"><Icon name="layers" size={20} /></span>
       </div>
-      <p className="server-panel-text">Your files are scanned on the computer running CloneCutter’s local server. Selected duplicate copies go to Trash / Recycle Bin.</p>
+      <p className="server-panel-text">Your files are scanned on the computer running CloneCutter’s local server. Selected duplicate copies go to that computer’s {app.trashName}.</p>
       {!app.api.available && !app.api.checking && <div className="server-help">
         <p>Start the local server from the project folder:</p>
         <pre><code>pip install -r requirements.txt{'\n'}python server.py</code></pre>
