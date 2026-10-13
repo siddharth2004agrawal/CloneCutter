@@ -143,8 +143,10 @@ export default function useCloneCutter() {
       : group));
   }
 
-  function selectCopies(checked) {
-    setDuplicates((previous) => previous.map((group) => selectGroupCopies(group, checked)));
+  function selectCopies(checked, groupIds) {
+    const targetGroups = groupIds ? new Set(groupIds) : null;
+    setDuplicates((previous) => previous.map((group) => targetGroups && !targetGroups.has(group.id)
+      ? group : selectGroupCopies(group, checked)));
   }
 
   const deleteAllowed = Boolean(scanSource && api.available && api.canTrash);

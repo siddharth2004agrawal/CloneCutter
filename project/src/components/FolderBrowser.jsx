@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { gsap } from 'gsap';
 import { requestJson } from '../lib/api.js';
 import Icon from './Icon.jsx';
 
 export default function FolderBrowser({ base, selected, onSelect, onClose }) {
+  const browserRef = useRef(null);
   const [location, setLocation] = useState({ path: null });
   const [pathInput, setPathInput] = useState('');
   const [data, setData] = useState(null);
@@ -29,8 +31,18 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
     return () => controller.abort();
   }, [base, location]);
 
+  useEffect(() => {
+    if (!data || loading) return undefined;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo(browserRef.current.querySelectorAll('.folder-browser-content > *'),
+        { y: 7, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.24, stagger: 0.035, ease: 'power2.out' });
+    }, browserRef);
+    return () => animations.revert();
+  }, [data?.path, loading]);
+
   return (
-    <section className="folder-browser" aria-label="Folder browser" aria-busy={loading}>
+    <section className="folder-browser" aria-label="Folder browser" aria-busy={loading} ref={browserRef}>
       <p className="scan-scope-note">Browse folders on the computer running the local server, or enter an absolute folder path.</p>
       <form className="folder-path-form" onSubmit={(event) => {
         event.preventDefault();
@@ -44,7 +56,7 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
       </form>
       {error && <p className="app-message app-error" role="alert">{error}</p>}
       {loading && <p className="scan-scope-note" role="status">Loading folders…</p>}
-      {data && <>
+      {data && <div className="folder-browser-content" key={data.path}>
         <div className="folder-buttons" aria-label="Folder navigation">
           <button type="button" className="btn-secondary" onClick={() => setLocation({ path: data.parent })} disabled={loading || !data.parent}>Up one level</button>
           {data.roots.map((root) => <button key={root} type="button" className="btn-secondary" disabled={loading} onClick={() => setLocation({ path: root })}>{root}</button>)}
@@ -58,7 +70,7 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
           ))}
           {!data.directories.length && <p className="scan-scope-note folder-browser-empty">No subfolders. You can select this folder.</p>}
         </div>
-      </>}
+      </div>}
       <div className="folder-buttons">
         <button type="button" className="btn-primary" disabled={loading || !data || selected.includes(data.path)} onClick={() => onSelect(data.path)}>
           <Icon name="plus" size={15} />{data && selected.includes(data.path) ? 'Folder already selected' : 'Select this folder'}
