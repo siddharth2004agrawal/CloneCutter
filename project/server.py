@@ -65,6 +65,34 @@ def excluded_directory(path: str) -> bool:
     return path in VIRTUAL_PATHS or path in TRASH_PATHS or name in {".trash", ".trashes", "$recycle.bin"} or name.startswith(".trash-")
 
 
+def scan_folder(raw: str) -> str:
+    if not isinstance(raw, str) or not os.path.isabs(raw):
+        raise ValueError("Provide an absolute folder path.")
+    path = Path(os.path.abspath(raw))
+    for ancestor in (path, *path.parents):
+        if ancestor.is_symlink() or excluded_directory(str(ancestor)):
+            raise ValueError("Symbolic links, virtual system folders, and Trash cannot be selected.")
+    if not path.is_dir():
+        raise ValueError("Folder does not exist or is not accessible.")
+    return str(path)
+
+
+def browse_folders(raw=None):
+    path = scan_folder(str(Path.home()) if raw is None else raw)
+    directories = []
+    with os.scandir(path) as entries:
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False) and not excluded_directory(entry.path):
+                    directories.append({"name": entry.name, "path": entry.path})
+            except OSError:
+                continue
+    parent = str(Path(path).parent)
+    return {"path": path, "parent": parent if parent != path else None,
+            "directories": sorted(directories, key=lambda folder: folder["name"].casefold()),
+            "roots": filesystem_roots()}
+
+
 def check_cancel(cancel):
     if cancel and cancel.is_set():
         raise ScanCancelled()
@@ -135,7 +163,7 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
         if progress and (force or now - last_report > .2):
             progress({"value": value, "message": message, "totalFiles": summary["totalFiles"]})
             last_report = now
-    report(0, "Discovering files across the filesystem…", True)
+    report(0, "Discovering files in scan locations…", True)
     for path, info in walk_files(roots, summary, cancel):
         if not file_type_allowed(path, file_types):
             continue
@@ -291,7 +319,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/clonecutter-health":
-            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "filesystemScan": True})
+            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "filesystemScan": True, "folderScan": True})
+            return
+        if parsed.path == "/api/folders":
+            try:
+                path = parse_qs(parsed.query).get("path", [None])[0]
+                send_json(self, 200, browse_folders(path))
+            except ValueError as error:
+                send_json(self, 400, {"error": str(error)})
+            except OSError:
+                send_json(self, 403, {"error": "This folder cannot be read by the server's account. Choose another folder."})
             return
         if parsed.path == "/api/scan":
             scan_id = parse_qs(parsed.query).get("id", [None])[0]
@@ -333,12 +370,21 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object.")
             if route == "/api/scan":
-                roots = filesystem_roots() if data.get("scope", "filesystem") == "filesystem" else data.get("roots")
+                scope = data.get("scope", "filesystem")
+                if scope not in {"filesystem", "folders"}:
+                    raise ValueError("Select filesystem or folders as the scan scope.")
+                roots = filesystem_roots() if scope == "filesystem" else data.get("roots")
                 types = data.get("file_types", ["all"])
                 if not isinstance(roots, list) or not roots or any(not isinstance(r, str) or not os.path.isabs(r) for r in roots):
                     raise ValueError("Provide absolute scan roots.")
                 if not isinstance(types, list) or not types or any(t not in {*EXTENSIONS, "all"} for t in types):
                     raise ValueError("Select at least one valid file type.")
+                if scope == "folders":
+                    roots = list(dict.fromkeys(scan_folder(root) for root in roots))
+                    # Check access before starting so unreadable selections are not reported as empty scans.
+                    for root in roots:
+                        with os.scandir(root):
+                            pass
                 send_json(self, 202, {"scanId": start_scan(roots, types)})
             elif route == "/api/scan/cancel":
                 with STATE_LOCK:
@@ -359,6 +405,8 @@ class Handler(SimpleHTTPRequestHandler):
                 send_json(self, 200, result)
         except (ValueError, TypeError) as error:
             send_json(self, 400, {"error": str(error)})
+        except PermissionError:
+            send_json(self, 403, {"error": "A selected folder cannot be read by the server's account."})
         except Exception as error:
             send_json(self, 500, {"error": str(error)})
 

@@ -14,7 +14,7 @@ export default function ScanResults({ app }) {
     <section id="resultsSection" className="results-section" aria-label="Scan results" aria-busy={app.busy}>
       <div className="section-heading results-heading">
         <div><p className="eyebrow">02 / Review</p><h3>{app.duplicates.length ? 'Choose the copies to delete.' : 'Everything in its place.'}</h3></div>
-        <span className="results-source">Whole filesystem</span>
+        <span className="results-source">{app.scanSource.scope === 'folders' ? 'Selected folders' : 'Whole filesystem'}</span>
       </div>
       <div className="stats">
         <div className="stat"><span id="totalDuplicates">{extraCopies.toLocaleString()}</span><small>Duplicate Copies · {app.duplicates.length.toLocaleString()} groups</small></div>

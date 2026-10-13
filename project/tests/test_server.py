@@ -196,18 +196,96 @@ class FilesystemTests(unittest.TestCase):
         getattr(handler, f'do_{method}')()
         return codes[0], json.loads(handler.wfile.getvalue())
 
+    def wait_for_scan(self, scan_id):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            _, result = self.request('GET', f'/api/scan?id={scan_id}')
+            if result['status'] != 'scanning' and not server.OPERATION_LOCK.locked():
+                return result
+            time.sleep(.01)
+        self.fail('Scan did not finish')
+
+    def test_folder_browser_lists_only_real_nonexcluded_directories(self):
+        self.file('z-last/file')
+        self.file('A-first/file')
+        self.file('regular-file')
+        self.file('.Trash/copy')
+        (self.root / 'linked-folder').symlink_to(self.root / 'A-first', target_is_directory=True)
+        with patch.object(server.Path, 'home', return_value=self.root):
+            code, result = self.request('GET', '/api/folders')
+        self.assertEqual(code, 200)
+        self.assertEqual(result['path'], str(self.root))
+        self.assertEqual(result['parent'], str(self.root.parent))
+        self.assertEqual([folder['name'] for folder in result['directories']], ['A-first', 'z-last'])
+        self.assertEqual(result['directories'][0]['path'], str(self.root / 'A-first'))
+        self.assertEqual(result['roots'], server.filesystem_roots())
+
+    def test_folder_browser_handles_encoded_paths_and_empty_folders(self):
+        from urllib.parse import quote
+        folder = self.root / 'space & # folder'
+        folder.mkdir()
+        code, result = self.request('GET', f'/api/folders?path={quote(str(folder), safe="")}')
+        self.assertEqual(code, 200)
+        self.assertEqual(result['path'], str(folder))
+        self.assertEqual(result['directories'], [])
+
+    def test_folder_scan_compares_selected_roots_and_excludes_other_files(self):
+        self.original = self.file('selected-one/original.txt')
+        self.copy = self.file('selected-two/nested/copy.txt')
+        outside = self.file('unselected/copy.txt')
+        roots = [str(self.root / 'selected-one'), str(self.root / 'selected-two'),
+                 str(self.root / 'selected-two/nested'), str(self.root / 'selected-one')]
+        code, started = self.request('POST', '/api/scan', {'scope': 'folders', 'roots': roots})
+        self.assertEqual(code, 202)
+        result = self.wait_for_scan(started['scanId'])
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['totalFiles'], 2)
+        paths = {file['path'] for group in result['duplicates'] for file in group['files']}
+        self.assertEqual(paths, {str(self.original), str(self.copy)})
+        self.assertEqual(result['roots'], list(dict.fromkeys(roots)))
+        self.trash = self.root / '.Trash'
+        self.trash.mkdir()
+        def fake_trash(path):
+            Path(path).rename(self.trash / Path(path).name)
+        with patch.object(server, 'HAS_SEND2TRASH', True), patch.object(server, 'send2trash', fake_trash):
+            code, deletion = self.request('POST', '/api/move', {
+                'scanId': started['scanId'], 'paths': [str(self.copy), str(outside)],
+            })
+        self.assertEqual(code, 200)
+        self.assertEqual(deletion['moved'], [str(self.copy)])
+        self.assertEqual(len(deletion['errors']), 1)
+        self.assertTrue(self.original.exists())
+        self.assertTrue(outside.exists())
+
+    def test_folder_api_rejects_invalid_roots_and_scopes(self):
+        regular = self.file('file.txt')
+        self.file('.Trash/file')
+        link = self.root / 'linked'
+        link.symlink_to(self.root, target_is_directory=True)
+        invalid = ['relative/path', str(self.root / 'missing'), str(regular),
+                   str(self.root / '.Trash'), str(link), str(link / '.Trash'), '/proc']
+        for path in invalid:
+            with self.subTest(path=path):
+                from urllib.parse import quote
+                self.assertEqual(self.request('GET', f'/api/folders?path={quote(path, safe="")}')[0], 400)
+                self.assertEqual(self.request('POST', '/api/scan', {'scope': 'folders', 'roots': [path]})[0], 400)
+        for data in [{'scope': 'folders'}, {'scope': 'folders', 'roots': []},
+                     {'scope': 'folders', 'roots': [str(self.root), 42]}, {'scope': 'unknown'}]:
+            with self.subTest(data=data):
+                self.assertEqual(self.request('POST', '/api/scan', data)[0], 400)
+
+    def test_folder_api_reports_unreadable_folders(self):
+        with patch.object(server.os, 'scandir', side_effect=PermissionError('Unreadable')):
+            self.assertEqual(self.request('GET', f'/api/folders?path={self.root}')[0], 403)
+            self.assertEqual(self.request('POST', '/api/scan', {'scope': 'folders', 'roots': [str(self.root)]})[0], 403)
+
     def test_filesystem_api_discovers_roots_and_polls_results(self):
         self.file('one')
         self.file('nested/two')
         with patch.object(server, 'filesystem_roots', return_value=[str(self.root)]):
             code, started = self.request('POST', '/api/scan', {'scope': 'filesystem', 'file_types': ['all']})
         self.assertEqual(code, 202)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            code, result = self.request('GET', f"/api/scan?id={started['scanId']}")
-            if result['status'] != 'scanning':
-                break
-            time.sleep(.01)
+        result = self.wait_for_scan(started['scanId'])
         self.assertEqual(result['status'], 'complete')
         self.assertEqual(result['totalFiles'], 2)
         self.assertEqual(len(result['duplicates']), 1)

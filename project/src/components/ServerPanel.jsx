@@ -11,7 +11,7 @@ export default function ServerPanel({ app }) {
       {!app.api.available && !app.api.checking && <div className="server-help">
         <p>Start the local server from the project folder:</p>
         <pre><code>pip install -r requirements.txt{'\n'}python server.py</code></pre>
-        <p>Then reconnect to start a whole-filesystem scan.</p>
+        <p>Then reconnect to browse folders or scan your filesystem.</p>
       </div>}
       {app.api.available && !app.api.canTrash && <p className="delete-support-note">Install deletion support with <code>pip install -r requirements.txt</code>, restart the server, and reconnect.</p>}
       <div className="server-panel-footer">

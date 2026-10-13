@@ -26,7 +26,7 @@ export default function App() {
         <div>
           <p className="eyebrow">A cleaner digital space</p>
           <h2>Keep what matters.</h2>
-          <p className="intro-description">Find identical files across your whole filesystem,<br className="desktop-break" /> select extra copies, and make a little more room.</p>
+          <p className="intro-description">Find identical files in selected folders or your whole filesystem,<br className="desktop-break" /> select extra copies, and make a little more room.</p>
         </div>
         <div className="intro-detail">
           <Icon name="layers" size={20} />

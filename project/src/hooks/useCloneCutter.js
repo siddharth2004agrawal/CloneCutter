@@ -18,6 +18,8 @@ function pause(signal) {
 }
 
 export default function useCloneCutter() {
+  const [scope, setScope] = useState('filesystem');
+  const [folders, setFolders] = useState([]);
   const [fileTypes, setFileTypes] = useState(['image', 'video', 'audio', 'document', 'archive', 'all']);
   const [api, setApi] = useState({ available: false, base: '', checking: true, canTrash: false });
   const [duplicates, setDuplicates] = useState([]);
@@ -71,7 +73,7 @@ export default function useCloneCutter() {
   }
 
   async function startScan() {
-    if (busyRef.current || !api.available || !fileTypes.length) return;
+    if (busyRef.current || !api.available || !fileTypes.length || (scope === 'folders' && !folders.length)) return;
     busyRef.current = true;
     setError('');
     setNotice('');
@@ -80,13 +82,14 @@ export default function useCloneCutter() {
     setTotalFiles(0);
     setCancelling(false);
     setPhase('scanning');
-    setProgress({ value: 0, message: 'Preparing a whole-filesystem scan…' });
+    setProgress({ value: 0, message: scope === 'folders' ? 'Preparing a selected-folder scan…' : 'Preparing a whole-filesystem scan…' });
     const controller = new AbortController();
     scanAbortRef.current = controller;
     let active;
     try {
       const started = await requestJson(api.base, '/api/scan', {
-        scope: 'filesystem', file_types: fileTypes.includes('all') ? ['all'] : [...fileTypes],
+        scope, ...(scope === 'folders' ? { roots: [...folders] } : {}),
+        file_types: fileTypes.includes('all') ? ['all'] : [...fileTypes],
       }, controller.signal);
       active = { id: started.scanId, base: api.base };
       activeScanRef.current = active;
@@ -103,7 +106,7 @@ export default function useCloneCutter() {
         if (result.status === 'complete') {
           setDuplicates(initializeGroups(result.duplicates || []));
           setTotalFiles(result.totalFiles || 0);
-          setScanSource({ mode: 'server', base: active.base, scanId: active.id, roots: result.roots, skipped: result.skipped || 0 });
+          setScanSource({ mode: 'server', scope, base: active.base, scanId: active.id, roots: result.roots, skipped: result.skipped || 0 });
           setPhase('results');
           return;
         }
@@ -200,9 +203,12 @@ export default function useCloneCutter() {
 
   const busy = phase === 'scanning' || phase === 'deleting';
   return {
+    scope, setScope, folders,
+    addFolder: (path) => setFolders((previous) => [...new Set([...previous, path])]),
+    removeFolder: (path) => setFolders((previous) => previous.filter((folder) => folder !== path)),
     fileTypes, api, duplicates, totalFiles, scanSource, phase, progress, error, notice, cleared, busy,
     deleteAllowed, selectedCount: selectedFiles.length, selectedBytes: selectedFiles.reduce((sum, file) => sum + file.size, 0),
-    canScan: !busy && api.available && fileTypes.length > 0,
+    canScan: !busy && api.available && fileTypes.length > 0 && (scope === 'filesystem' || folders.length > 0),
     cancelling, connectApi, toggleFileType, startScan, cancelScan, chooseCopy, chooseAll, toggleCopy, selectCopies, removeCopies,
   };
 }
