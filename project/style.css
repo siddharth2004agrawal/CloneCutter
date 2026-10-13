@@ -46,7 +46,6 @@ input { accent-color: var(--accent); }
 /* Folder setup, with a compact alternative alongside it. */
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 20px; }
 .workspace-grid.is-working { display: block; }
-.is-working .server-panel { margin-bottom: 20px; }
 .upload-section, .server-panel, .results-section, .progress-section { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 3px 12px #26342103; }
 .upload-section { padding: 27px 28px 0; }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 23px; }
@@ -279,7 +278,7 @@ button:focus-visible, input:focus-visible { outline-color: #697a51; }
 .brand-mark { width: 37px; height: 37px; border-radius: 10px; background: #24463a; color: #d8ed9a; }
 .brand h1 { font-size: 17px; font-weight: 650; letter-spacing: -.45px; }
 .brand h1 span { font-size: 10px; letter-spacing: .1px; color: #80847b; }
-.connection-status { gap: 9px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 999px; background: #faf9f6; font-size: 11px; }
+.connection-status { gap: 9px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 999px; color: #62695e; background: #faf9f6; font-size: 11px; text-align: left; }
 .status-dot { width: 7px; height: 7px; }
 .connected .status-dot, .server-status.ok .status-dot { background: #799348; box-shadow: 0 0 0 3px #edf1e7; }
 
@@ -336,7 +335,7 @@ button:focus-visible, input:focus-visible { outline-color: #697a51; }
 .cleared-files { color: #515950; font-size: 11px; }
 .cleared-note { padding-left: 19px; border-left: 1px solid var(--border); color: #797d74; font-size: 11px; }
 
-.workspace-grid { grid-template-columns: minmax(0, 1fr) 314px; gap: 17px; }
+.workspace-grid { grid-template-columns: minmax(0, 1fr); gap: 17px; }
 .upload-section, .server-panel, .results-section, .progress-section { border-color: #e4e2da; border-radius: 13px; box-shadow: 0 2px 10px #282a1808; }
 .upload-section { padding: 23px 23px 0; }
 .section-heading { margin-bottom: 18px; }
@@ -447,7 +446,7 @@ button:focus-visible, input:focus-visible { outline-color: #697a51; }
     .container { padding-inline: 28px; }
     .intro { min-height: 278px; padding: 40px 37px; }
     .hero-art { right: 5%; transform: translate(10%, -50%) scale(.85); }
-    .workspace-grid { grid-template-columns: minmax(0, 1fr) 276px; gap: 14px; }
+    .workspace-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; }
     .upload-section { padding-inline: 19px; }
     .server-panel { padding-inline: 18px; }
 }
