@@ -17,7 +17,7 @@ body { min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 button, input, label { -webkit-tap-highlight-color: transparent; }
-button { transition: background 160ms ease, border-color 160ms ease, color 160ms ease; }
+button { transition: background 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease; }
 button:disabled { cursor: not-allowed; opacity: .42; }
 button:focus-visible, input:focus-visible { outline: 2px solid #58745e; outline-offset: 4px; }
 input { accent-color: var(--accent); }
@@ -75,11 +75,15 @@ input { accent-color: var(--accent); }
 .folder-entry { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 12px; border: 0; background: transparent; color: var(--ink); text-align: left; font-size: 12px; }
 .folder-entry + .folder-entry { border-top: 1px solid var(--border); }
 .folder-entry:hover:not(:disabled) { background: var(--sage); }
+.folder-entry { transition: background 160ms ease, padding 180ms ease; }
+.folder-entry:hover:not(:disabled) { padding-left: 16px; }
 .folder-entry span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .folder-browser-empty { padding-inline: 12px; }
 .btn-primary, .btn-secondary, .btn-danger { min-height: 37px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; font-size: 12px; font-weight: 500; line-height: 1.3; border: 1px solid transparent; border-radius: 7px; white-space: nowrap; }
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: #355642; }
+.btn-primary:hover:not(:disabled), .btn-secondary:hover:not(:disabled), .btn-danger:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px #1c302014; }
+.btn-primary:active:not(:disabled), .btn-secondary:active:not(:disabled), .btn-danger:active:not(:disabled) { transform: translateY(0) scale(.985); box-shadow: none; }
 .btn-primary:disabled { background: #e5e9e1; border-color: #e5e9e1; color: #8a9385; opacity: 1; }
 .btn-secondary { background: #fff; border-color: #dfe4db; color: #505b4c; }
 .btn-secondary:hover:not(:disabled) { background: #f3f6ef; border-color: #b8c5ae; }
@@ -145,6 +149,8 @@ input { accent-color: var(--accent); }
 .actions .btn-danger { margin-left: auto; min-height: 33px; font-size: 11px; }
 .duplicates-list { display: flex; flex-direction: column; gap: 12px; }
 .duplicate-group { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.duplicate-group { transition: border-color 180ms ease, box-shadow 220ms ease; }
+.duplicate-group:hover { border-color: #d4d9cd; box-shadow: 0 5px 16px #2634210a; }
 .group-header { display: flex; align-items: center; gap: 15px; padding: 16px 18px; cursor: pointer; background: #fcfdfb; }
 .group-header:hover { background: #f7f9f4; }
 .group-info { flex: 1; min-width: 0; }
@@ -159,6 +165,7 @@ input { accent-color: var(--accent); }
 .group-toggle .icon { transform: rotate(-90deg); transition: transform 180ms ease; }
 .group-toggle.is-expanded .icon { transform: rotate(0); }
 .file-item { display: flex; align-items: center; gap: 14px; padding: 17px 18px; border-top: 1px solid var(--border); border-left: 3px solid transparent; }
+.file-item { transition: background 180ms ease, border-color 180ms ease; }
 .group-choice-note { padding: 12px 18px; font-size: 11px; line-height: 1.7; color: var(--muted); border-top: 1px solid var(--border); }
 .file-decision { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 5px; }
 .for-deletion .file-decision { color: #98564e; }
@@ -384,6 +391,7 @@ button:focus-visible, input:focus-visible { outline-color: #697a51; }
 .progress-section h3 { margin-bottom: 23px; font-size: 26px; }
 .progress-bar { height: 5px; background: #edede5; }
 .progress-fill { background: #9aaf67; }
+.progress-fill { transition: width 360ms cubic-bezier(.22,.68,0,1); }
 .progress-text { font-size: 11px; }
 
 .results-section { padding: 23px; margin-top: 17px; }
@@ -421,6 +429,8 @@ button:focus-visible, input:focus-visible { outline-color: #697a51; }
 .group-stats > .icon { color: #74845c; }
 .group-saving { color: #647548; font-size: 10px; }
 .group-toggle { width: 27px; height: 27px; color: #737a70; }
+.group-toggle { transition: color 180ms ease, background 180ms ease, transform 180ms ease; }
+.group-toggle:active { transform: scale(.92); }
 .group-toggle:hover { background: #ecefe5; }
 .group-choice-note { padding: 10px 15px; color: #74796f; font-size: 10px; }
 .file-item { gap: 12px; padding: 14px 15px; }

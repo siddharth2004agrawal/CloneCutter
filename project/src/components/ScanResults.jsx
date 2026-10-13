@@ -25,6 +25,7 @@ export default function ScanResults({ app }) {
   const spaceSaved = app.duplicates.reduce((sum, group) => sum + (group.files.length - 1) * group.files[0].size, 0);
   const selectAllRef = useRef(null);
   const sectionRef = useRef(null);
+  const previousSelection = useRef(app.selectedCount);
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = matchingSelected > 0 && matchingSelected < matchingExtras;
   }, [matchingExtras, matchingSelected]);
@@ -63,6 +64,26 @@ export default function ScanResults({ app }) {
     }, sectionRef);
     return () => animations.revert();
   }, [app.scanSource.scanId, currentPage]);
+
+  useEffect(() => {
+    if (previousSelection.current === app.selectedCount) return undefined;
+    previousSelection.current = app.selectedCount;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      const summary = sectionRef.current?.querySelector('.selection-summary');
+      if (summary) gsap.fromTo(summary, { y: 3, autoAlpha: 0.72 }, { y: 0, autoAlpha: 1, duration: 0.2, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, sectionRef);
+    return () => animations.revert();
+  }, [app.selectedCount]);
+
+  useEffect(() => {
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      const groups = sectionRef.current?.querySelectorAll('.duplicate-group');
+      if (groups?.length) gsap.fromTo(groups, { y: 5, autoAlpha: 0.72 }, { y: 0, autoAlpha: 1, duration: 0.2, stagger: 0.014, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, sectionRef);
+    return () => animations.revert();
+  }, [query, sort]);
   return (
     <section id="resultsSection" className="results-section" aria-label="Scan results" aria-busy={app.busy} ref={sectionRef}>
       <div className="section-heading results-heading">

@@ -26,6 +26,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.to('.hero-file-stack', { y: -3, delay: 1.25, duration: 2.8, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+      gsap.to('.intro-eyebrow-dot', { scale: 1.18, duration: 1.8, repeat: -1, yoyo: true, ease: 'sine.inOut' });
+    }, shell);
+    return () => animations.revert();
+  }, []);
+
+  const previousClearedFiles = useRef(app.cleared.files);
+  useEffect(() => {
+    if (previousClearedFiles.current === app.cleared.files) return undefined;
+    previousClearedFiles.current = app.cleared.files;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo('.cleared-icon', { scale: 0.88 }, { scale: 1, duration: 0.42, ease: 'back.out(2)', clearProps: 'transform' });
+      gsap.fromTo('#totalSpaceCleared', { y: 4, autoAlpha: 0.65 }, { y: 0, autoAlpha: 1, duration: 0.28, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, shell);
+    return () => animations.revert();
+  }, [app.cleared.files]);
+
+  useEffect(() => {
     if (!working) return undefined;
     const animations = gsap.matchMedia();
     animations.add('(prefers-reduced-motion: no-preference)', () => {
@@ -33,6 +54,25 @@ export default function App() {
     }, shell);
     return () => animations.revert();
   }, [working]);
+
+  useEffect(() => {
+    if (!working) return undefined;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      gsap.fromTo('#progressText', { y: 3, autoAlpha: 0.7 }, { y: 0, autoAlpha: 1, duration: 0.2, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, shell);
+    return () => animations.revert();
+  }, [working, app.progress.message]);
+
+  useEffect(() => {
+    if (!app.error && !app.notice) return undefined;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      const messages = shell.current?.querySelectorAll('.app-message');
+      if (messages?.length) gsap.fromTo(messages, { y: 7, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.24, stagger: 0.04, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, shell);
+    return () => animations.revert();
+  }, [app.error, app.notice]);
 
   return (
     <main className="container" ref={shell}>

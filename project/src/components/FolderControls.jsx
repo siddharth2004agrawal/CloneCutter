@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { gsap } from 'gsap';
 import { FILE_TYPES } from '../lib/files.js';
 import FolderBrowser from './FolderBrowser.jsx';
 import Icon from './Icon.jsx';
@@ -6,12 +7,42 @@ import Icon from './Icon.jsx';
 export default function FolderControls({ app }) {
   const [browsing, setBrowsing] = useState(false);
   const browseButton = useRef(null);
+  const controlsRef = useRef(null);
+  const previousMode = useRef(null);
+  const previousFileTypes = useRef(app.fileTypes);
+
+  useEffect(() => {
+    const mode = `${app.scope}:${browsing}`;
+    if (previousMode.current === null) {
+      previousMode.current = mode;
+      return undefined;
+    }
+    previousMode.current = mode;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      const targets = controlsRef.current?.querySelectorAll('.folder-list, .folder-buttons, .folder-browser');
+      if (targets?.length) gsap.fromTo(targets, { y: 8, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.24, stagger: 0.035, ease: 'power2.out', clearProps: 'transform,opacity,visibility' });
+    }, controlsRef);
+    return () => animations.revert();
+  }, [app.scope, browsing]);
+
+  useEffect(() => {
+    if (previousFileTypes.current === app.fileTypes) return undefined;
+    previousFileTypes.current = app.fileTypes;
+    const animations = gsap.matchMedia();
+    animations.add('(prefers-reduced-motion: no-preference)', () => {
+      const selectedTypes = controlsRef.current?.querySelectorAll('.file-types label.is-checked');
+      if (selectedTypes?.length) gsap.fromTo(selectedTypes, { scale: 0.96 }, { scale: 1, duration: 0.24, stagger: 0.025, ease: 'back.out(2)', clearProps: 'transform' });
+    }, controlsRef);
+    return () => animations.revert();
+  }, [app.fileTypes]);
+
   function closeBrowser() {
     setBrowsing(false);
     browseButton.current?.focus();
   }
   return (
-    <section className="upload-section" aria-label="Scan setup">
+    <section className="upload-section" aria-label="Scan setup" ref={controlsRef}>
       <div className="section-heading">
         <div><p className="eyebrow">01 / Scan</p><h3>{app.scope === 'folders' ? 'Your selected folders' : 'Your whole filesystem'}</h3></div>
         <span className="section-symbol"><Icon name="folder" size={20} /></span>
