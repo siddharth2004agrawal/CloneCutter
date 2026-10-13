@@ -4,19 +4,32 @@ Find identical files in selected folders or across the filesystem of the compute
 
 ## Run locally
 
-From this directory:
+Install dependencies once from this directory:
 
 ```sh
 npm install
-npm run build
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python server.py
 ```
 
-Open http://127.0.0.1:8765. On Windows, use `.venv\Scripts\pip` and `.venv\Scripts\python` for the last two commands.
+On Windows, create and install the Python dependencies with:
 
-For development, keep the Python server running and run `npm run dev` in another terminal. Vite forwards `/api` requests to the server.
+```powershell
+py -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+Then start the React app and local file server together with one command:
+
+```sh
+npm run dev
+```
+
+Open the Vite address shown in the terminal (usually http://127.0.0.1:5173). The terminal labels output from each process; press **Ctrl+C** to stop both. Vite forwards `/api` requests to the local server. Set `PYTHON` if you want the launcher to use a specific Python executable; it automatically uses `.venv` when available.
+
+To run only the React UI during frontend work, use `npm run dev:web`.
+
+For a built, standalone app, run `npm run build` and then `.venv/bin/python server.py` (on Windows, `.venv\Scripts\python server.py`). Open http://127.0.0.1:8765.
 
 ## Scan and delete copies
 

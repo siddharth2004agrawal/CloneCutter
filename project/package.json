@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "vite",
     "test": "node --test tests/files.test.js && python3 -m unittest discover -s tests -p 'test_*.py'",
     "build": "vite build",
     "preview": "vite preview"
