@@ -69,6 +69,22 @@ input { accent-color: var(--accent); }
 .scan-scope label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
 .folder-browser { border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 14px; background: #fafcf8; }
 .folder-browser > .scan-scope-note:first-child { margin-top: 0; }
+.folder-shortcuts { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.folder-shortcuts .btn-secondary { white-space: normal; text-align: left; }
+.folder-navigation { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+.folder-breadcrumbs { display: flex; align-items: center; flex-wrap: wrap; flex: 1; gap: 5px; min-width: 0; list-style: none; }
+.folder-breadcrumbs li { display: flex; align-items: center; min-width: 0; }
+.folder-breadcrumbs li + li::before { content: '›'; color: var(--muted); margin-right: 5px; }
+.folder-breadcrumbs button { border: 0; border-radius: 5px; background: transparent; color: var(--muted); padding: 8px 4px; font-size: 12px; overflow-wrap: anywhere; text-align: left; }
+.folder-breadcrumbs button:hover { background: var(--sage); }
+.folder-breadcrumbs button[aria-current] { color: var(--ink); font-weight: 600; }
+.folder-filter { display: block; color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+.folder-filter input { display: block; margin-top: 7px; }
+.folder-current-path { overflow-wrap: anywhere; }
+.folder-manual-path { margin-top: 14px; }
+.folder-manual-path summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.folder-manual-path summary:focus-visible { outline: 2px solid #58745e; outline-offset: 4px; }
+.folder-manual-path .folder-path-form { margin-top: 10px; }
 .folder-path-form > label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; }
 .folder-path-row { display: flex; align-items: center; gap: 8px; }
 .folder-browser .app-message { margin: 12px 0; }
@@ -198,6 +214,8 @@ input { accent-color: var(--accent); }
 .progress-bar { max-width: 400px; height: 4px; background: #edf1e8; border-radius: 3px; overflow: hidden; margin: 0 auto 13px; }
 .progress-fill { height: 100%; background: #8ca678; transition: width 200ms ease; }
 .progress-text { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.scan-timing { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; font-size: 12px; color: var(--muted); line-height: 1.7; }
+.scan-timing strong { color: var(--ink); font-weight: 500; }
 .app-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 28px; padding-top: 21px; border-top: 1px solid var(--border); color: #6f786c; font-size: 11px; }
 .app-footer > span:first-child { display: flex; align-items: center; gap: 6px; }
 

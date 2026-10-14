@@ -5,6 +5,7 @@ import FolderControls from './components/FolderControls.jsx';
 import ScanResults from './components/ScanResults.jsx';
 import Icon from './components/Icon.jsx';
 import { formatBytes } from './lib/files.js';
+import { formatDuration, formatRemainingTime } from './lib/scanTime.js';
 
 export default function App() {
   const shell = useRef(null);
@@ -129,6 +130,10 @@ export default function App() {
             <div id="progressFill" className="progress-fill" style={{ width: `${Math.max(0, Math.min(100, app.progress.value))}%` }} />
           </div>
           <div id="progressText" className="progress-text" role="status">{app.progress.message}</div>
+          {app.phase === 'scanning' && <div className="scan-timing">
+            <span>Elapsed: <strong>{formatDuration(app.progress.elapsedSeconds)}</strong></span>
+            <span>Estimated time remaining: <strong>{app.cancelling ? 'Cancelling…' : formatRemainingTime(app.progress.remainingSeconds)}</strong></span>
+          </div>}
           {app.phase === 'scanning' && <button className="btn-secondary cancel-scan" type="button" onClick={app.cancelScan} disabled={app.cancelling}>{app.cancelling ? 'Cancelling…' : 'Cancel scan'}</button>}
         </section>
       )}

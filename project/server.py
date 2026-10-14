@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import mimetypes
 import os
 import stat
@@ -81,6 +82,31 @@ def scan_folder(raw: str) -> str:
     return str(path)
 
 
+def folder_shortcuts(roots):
+    home = Path.home()
+    candidates = [(name, home / name) for name in
+                  ("Desktop", "Downloads", "Documents", "Pictures", "Videos", "Music")]
+    if os.name == "nt":
+        candidates.extend((f"Drive {root}", Path(root)) for root in roots)
+    else:
+        candidates.append(("Computer", Path("/")))
+        if sys.platform == "darwin":
+            candidates.append(("External drives", Path("/Volumes")))
+        else:
+            media = Path("/media")
+            candidates.extend([("Removable drives", media / home.name if (media / home.name).is_dir() else media),
+                               ("Mounted drives", Path("/mnt"))])
+    shortcuts = []
+    for name, candidate in candidates:
+        try:
+            path = scan_folder(str(candidate))
+            if os.access(path, os.R_OK | os.X_OK):
+                shortcuts.append({"name": name, "path": path})
+        except (ValueError, OSError):
+            continue
+    return shortcuts
+
+
 def browse_folders(raw=None):
     path = scan_folder(str(Path.home()) if raw is None else raw)
     directories = []
@@ -92,9 +118,12 @@ def browse_folders(raw=None):
             except OSError:
                 continue
     parent = str(Path(path).parent)
+    roots = filesystem_roots()
     return {"path": path, "parent": parent if parent != path else None,
             "directories": sorted(directories, key=lambda folder: folder["name"].casefold()),
-            "roots": filesystem_roots()}
+            "roots": roots, "shortcuts": folder_shortcuts(roots),
+            "breadcrumbs": [{"name": folder.name or str(folder), "path": str(folder)}
+                            for folder in [*reversed(Path(path).parents), Path(path)]]}
 
 
 def check_cancel(cancel):
@@ -130,7 +159,7 @@ def signature(info):
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def hash_path(path, expected, *, quick=False, cancel=None):
+def hash_path(path, expected, *, quick=False, cancel=None, on_progress=None):
     """Reject changed files and symlinks, including replacements during hashing."""
     if signature(os.lstat(path)) != expected or not stat.S_ISREG(os.lstat(path).st_mode):
         raise OSError("File changed since the scan; scan again.")
@@ -146,6 +175,8 @@ def hash_path(path, expected, *, quick=False, cancel=None):
             if not block:
                 break
             digest.update(block)
+            if on_progress:
+                on_progress(len(block))
             if quick:
                 break
         if signature(os.fstat(stream.fileno())) != expected:
@@ -161,11 +192,21 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
     sizes = defaultdict(list)
     seen = set()
     last_report = 0
+    started = time.monotonic()
+    hashing_started = None
+    processed_work = 0
+    total_work = 0
     def report(value, message, force=False):
         nonlocal last_report
         now = time.monotonic()
         if progress and (force or now - last_report > .2):
-            progress({"value": value, "message": message, "totalFiles": summary["totalFiles"]})
+            remaining = None
+            if value == 100:
+                remaining = 0
+            elif hashing_started is not None and now - hashing_started >= 1 and processed_work > 0:
+                remaining = math.ceil(max(0, total_work - processed_work) * (now - hashing_started) / processed_work)
+            progress({"value": value, "message": message, "totalFiles": summary["totalFiles"],
+                      "elapsedSeconds": round(now - started, 1), "remainingSeconds": remaining})
             last_report = now
     report(0, "Discovering files in scan locations…", True)
     for path, info in walk_files(roots, summary, cancel):
@@ -182,25 +223,49 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
                                     "signature": signature(info)})
         report(5, f"Discovered {summary['totalFiles']:,} files · {path}")
     candidates = [file for group in sizes.values() if len(group) > 1 for file in group]
+    # Include one unit per file so empty files still contribute to the estimate.
+    sample_work = sum(min(file["size"], 256 * 1024) + 1 for file in candidates)
+    # Until sampling finishes, assume every candidate needs full verification.
+    total_work = sample_work + sum(file["size"] + 1 for file in candidates)
+    hashing_started = time.monotonic()
+    phase_start_work, phase_work, phase_value, phase_span = 0, sample_work, 10, 35
+    phase_message = "Checking file samples…"
+    def hash_progress(bytes_read):
+        nonlocal processed_work
+        processed_work += bytes_read
+        fraction = min(1, (processed_work - phase_start_work) / max(1, phase_work))
+        report(phase_value + phase_span * fraction, phase_message)
+    report(10, phase_message, True)
     quick_groups = defaultdict(list)
     for i, file in enumerate(candidates):
         check_cancel(cancel)
+        phase_message = f"Checking file samples {i + 1:,}/{len(candidates):,}"
+        before = processed_work
         try:
-            digest = hash_path(file["path"], file["signature"], quick=True, cancel=cancel)
+            digest = hash_path(file["path"], file["signature"], quick=True, cancel=cancel, on_progress=hash_progress)
             quick_groups[(file["size"], digest)].append(file)
         except OSError:
             summary["skipped"] += 1
-        report(10 + 35 * (i + 1) / len(candidates), f"Checking file samples {i + 1:,}/{len(candidates):,}")
+        processed_work = before + min(file["size"], 256 * 1024) + 1
+        hash_progress(0)
     candidates = [file for group in quick_groups.values() if len(group) > 1 for file in group]
+    phase_work = sum(file["size"] + 1 for file in candidates)
+    phase_start_work, phase_value, phase_span = processed_work, 45, 54
+    total_work = processed_work + phase_work
+    phase_message = "Verifying full contents…"
+    report(45, phase_message, True)
     full_groups = defaultdict(list)
     for i, file in enumerate(candidates):
         check_cancel(cancel)
+        phase_message = f"Verifying full contents {i + 1:,}/{len(candidates):,}"
+        before = processed_work
         try:
-            digest = hash_path(file["path"], file["signature"], cancel=cancel)
+            digest = hash_path(file["path"], file["signature"], cancel=cancel, on_progress=hash_progress)
             full_groups[(file["size"], digest)].append(file)
         except OSError:
             summary["skipped"] += 1
-        report(45 + 54 * (i + 1) / len(candidates), f"Verifying full contents {i + 1:,}/{len(candidates):,}")
+        processed_work = before + file["size"] + 1
+        hash_progress(0)
     check_cancel(cancel)
     duplicates = [{"id": str(i), "hash": digest, "files": sorted(files, key=lambda f: (f["lastModified"], f["path"]))}
                   for i, ((_, digest), files) in enumerate(full_groups.items(), 1) if len(files) > 1]

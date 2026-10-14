@@ -1,12 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initializeGroups, copiesToRemove, removeMovedFiles, selectGroupCopies, setCopyDelete } from '../src/lib/files.js';
+import { formatDuration, formatRemainingTime } from '../src/lib/scanTime.js';
 
 const files = [
   { path: '/one', lastModified: 200, size: 10 },
   { path: '/two', lastModified: 100, size: 10 },
   { path: '/three', lastModified: 300, size: 10 },
 ];
+
+test('scan timing distinguishes unknown, short, long, and completed estimates', () => {
+  for (const value of [null, undefined, NaN, Infinity]) {
+    assert.equal(formatRemainingTime(value), 'Calculating…');
+  }
+  assert.equal(formatRemainingTime(0), 'Finishing scan…');
+  assert.equal(formatRemainingTime(59), 'Less than a minute');
+  assert.equal(formatRemainingTime(61), 'About 2m');
+  assert.equal(formatRemainingTime(3661), 'About 1h 2m');
+  assert.equal(formatDuration(undefined), '0s');
+  assert.equal(formatDuration(65.8), '1m 5s');
+  assert.equal(formatDuration(3665), '1h 1m');
+});
 
 test('scan results start with every deletion checkbox unchecked', () => {
   const groups = initializeGroups([{ id: '1', files }]);

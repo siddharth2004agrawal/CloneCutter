@@ -69,11 +69,11 @@ export default function FolderControls({ app }) {
           )) : <div className="empty-folders">
             <span className="empty-folder-icon"><Icon name="folder" size={28} /></span>
             <p>Select folders to search</p>
-            <span>Find duplicates within and across your selected folders.<br />Subfolders are included automatically.</span>
+            <span>Click Choose folders to browse your folders and drives.<br />Subfolders are included automatically.</span>
           </div>}
         </div>
         <div className="folder-buttons">
-          <button ref={browseButton} type="button" className="btn-secondary" disabled={app.busy || !app.api.available} aria-expanded={browsing} onClick={() => setBrowsing(!browsing)}><Icon name="plus" size={15} />Browse folders</button>
+          <button ref={browseButton} type="button" className="btn-secondary" disabled={app.busy || !app.api.available} aria-expanded={browsing} onClick={() => setBrowsing(!browsing)}><Icon name="folder" size={15} />{app.folders.length ? 'Add another folder' : 'Choose folders'}</button>
         </div>
         {browsing && <FolderBrowser base={app.api.base} selected={app.folders} onSelect={(path) => { app.addFolder(path); closeBrowser(); }} onClose={closeBrowser} />}
       </>}

@@ -63,6 +63,48 @@ class FilesystemTests(unittest.TestCase):
         self.file('two', prefix + b'2')
         self.assertEqual(self.scan()[0], [])
 
+    def test_scan_time_estimate_updates_during_large_files_and_after_sampling(self):
+        self.file('one.bin', b'a' * (2 * 1024 * 1024))
+        self.file('two.bin', b'a' * (2 * 1024 * 1024))
+        self.file('unique.bin', b'b' * (2 * 1024 * 1024))
+        clock = [10.0]
+        updates = []
+        real_walk, real_hash = server.walk_files, server.hash_path
+        def slow_discovery(*args, **kwargs):
+            for entry in real_walk(*args, **kwargs):
+                clock[0] += 2
+                yield entry
+        def slow_hash(*args, **kwargs):
+            observer = kwargs.pop('on_progress')
+            def read_chunk(size):
+                clock[0] += 1
+                observer(size)
+            return real_hash(*args, **kwargs, on_progress=read_chunk)
+        with patch.object(server.time, 'monotonic', side_effect=lambda: clock[0]), \
+                patch.object(server, 'walk_files', side_effect=slow_discovery), \
+                patch.object(server, 'hash_path', side_effect=slow_hash):
+            groups, total = server.scan_duplicates([str(self.root)], ['all'], progress=updates.append)
+        self.assertEqual((len(groups), total), (1, 3))
+        discovery = [update for update in updates if update['value'] < 10]
+        self.assertTrue(all(update['remainingSeconds'] is None for update in discovery))
+        self.assertEqual(discovery[-1]['elapsedSeconds'], 6)
+        last_sample = next(update for update in reversed(updates) if update['message'] == 'Checking file samples 3/3')
+        full_start = next(update for update in updates if update['message'] == 'Verifying full contents…')
+        self.assertEqual(full_start['remainingSeconds'], 16)
+        self.assertGreater(last_sample['remainingSeconds'], full_start['remainingSeconds'])
+        # Progress and ETA arrive before the first large file finishes hashing.
+        self.assertTrue(any(45 < update['value'] < 72 and update['remainingSeconds'] > 0
+                            for update in updates if update['message'] == 'Verifying full contents 1/2'))
+        self.assertEqual(updates[-1]['value'], 100)
+        self.assertEqual(updates[-1]['remainingSeconds'], 0)
+        self.assertEqual(updates[-1]['elapsedSeconds'], 13)
+
+    def test_empty_scan_reports_zero_time_remaining(self):
+        updates = []
+        self.assertEqual(server.scan_duplicates([str(self.root)], ['all'], progress=updates.append), ([], 0))
+        self.assertIsNone(updates[0]['remainingSeconds'])
+        self.assertEqual(updates[-1]['remainingSeconds'], 0)
+
     def test_symlinks_hardlinks_devices_and_trash_are_excluded(self):
         original = self.file('one.txt')
         os.link(original, self.root / 'hardlink.txt')
@@ -239,6 +281,23 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(result['path'], str(folder))
         self.assertEqual(result['directories'], [])
+        self.assertEqual(result['breadcrumbs'][-1], {'name': folder.name, 'path': str(folder)})
+        self.assertEqual(result['breadcrumbs'][-2]['path'], str(self.root))
+        self.assertEqual(result['breadcrumbs'][0]['path'], folder.anchor)
+
+    def test_folder_shortcuts_only_offer_accessible_real_folders(self):
+        (self.root / 'Documents').mkdir()
+        (self.root / 'Downloads').mkdir()
+        (self.root / 'Pictures').symlink_to(self.root / 'Documents', target_is_directory=True)
+        self.file('Desktop')
+        actual_access = server.os.access
+        def accessible(path, mode):
+            return path != str(self.root / 'Downloads') and actual_access(path, mode)
+        with patch.object(server.Path, 'home', return_value=self.root), patch.object(server.os, 'access', side_effect=accessible):
+            code, result = self.request('GET', '/api/folders')
+        self.assertEqual(code, 200)
+        self.assertIn({'name': 'Documents', 'path': str(self.root / 'Documents')}, result['shortcuts'])
+        self.assertFalse({'Downloads', 'Pictures', 'Desktop', 'Videos', 'Music'} & {folder['name'] for folder in result['shortcuts']})
 
     def test_folder_scan_compares_selected_roots_and_excludes_other_files(self):
         self.original = self.file('selected-one/original.txt')
