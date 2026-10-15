@@ -44,7 +44,10 @@ export default function useCloneCutter() {
     setApi((previous) => ({ ...previous, checking: true }));
     try {
       const found = await discoverApi(controller.signal);
-      if (!controller.signal.aborted) setApi({ ...found, checking: false });
+      if (!controller.signal.aborted) {
+        setApi({ ...found, checking: false });
+        return found;
+      }
     } catch {
       if (!controller.signal.aborted) setApi({ available: false, base: '', checking: false, canTrash: false });
     }

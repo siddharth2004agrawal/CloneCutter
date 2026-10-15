@@ -19,6 +19,7 @@ class FilesystemTests(unittest.TestCase):
         server.LAST_SCAN_ID = None
         server.LAST_SCAN_GROUPS = []
         server.LAST_SCAN_PATHS.clear()
+        server.FOLDER_PICKER_STATE.clear()
 
     def tearDown(self):
         self.temp.cleanup()
@@ -285,29 +286,67 @@ class FilesystemTests(unittest.TestCase):
         folder.mkdir()
         response = subprocess.CompletedProcess([], 0, json.dumps({'path': str(folder)}), '')
         with patch.object(server.subprocess, 'run', return_value=response) as run:
-            code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
-        self.assertEqual((code, result), (200, {'path': str(folder)}))
+            code, started = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+            result = self.wait_for_picker(started['pickerId'])
+        self.assertEqual(code, 202)
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['path'], str(folder))
         self.assertEqual(run.call_args.args[0], [server.sys.executable, str(server.ROOT / 'scripts' / 'pick_folder.py'), str(self.root)])
         self.assertFalse(server.FOLDER_PICKER_LOCK.locked())
+
+    def wait_for_picker(self, picker_id):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            code, result = self.request('GET', f'/api/folders/pick?id={picker_id}')
+            self.assertEqual(code, 200)
+            if result['status'] != 'picking':
+                return result
+            time.sleep(.01)
+        self.fail('Folder picker did not finish')
+
+    def test_native_picker_returns_while_dialog_is_still_open(self):
+        dialog_closed = threading.Event()
+        def dialog(*_args, **_kwargs):
+            dialog_closed.wait(5)
+            return subprocess.CompletedProcess([], 0, '{"path": null}', '')
+        with patch.object(server.subprocess, 'run', side_effect=dialog):
+            try:
+                code, started = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+                self.assertEqual(code, 202)
+                code, state = self.request('GET', f'/api/folders/pick?id={started["pickerId"]}')
+                self.assertEqual((code, state['status']), (200, 'picking'))
+                self.assertEqual(self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})[0], 400)
+                self.assertEqual(self.request('GET', '/api/clonecutter-health')[0], 200)
+            finally:
+                dialog_closed.set()
+            self.assertEqual(self.wait_for_picker(started['pickerId'])['status'], 'cancelled')
 
     def test_native_picker_cancel_does_not_select_a_folder(self):
         response = subprocess.CompletedProcess([], 0, '{"path": null}', '')
         with patch.object(server.subprocess, 'run', return_value=response):
-            code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
-        self.assertEqual((code, result), (200, {'path': None}))
+            code, started = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+            result = self.wait_for_picker(started['pickerId'])
+        self.assertEqual(code, 202)
+        self.assertEqual((result['status'], result['path']), ('cancelled', None))
 
     def test_native_picker_rejects_invalid_selection_and_reports_failures(self):
-        responses = [(0, {'path': 'relative/path'}, 400),
-                     (0, {'path': str(self.file('not-a-folder'))}, 400),
-                     (1, {'error': 'No desktop session available.'}, 500)]
-        for returncode, payload, expected in responses:
+        responses = [(0, {'path': 'relative/path'}),
+                     (0, {'path': str(self.file('not-a-folder'))}),
+                     (1, {'error': 'No desktop session available.'})]
+        for returncode, payload in responses:
             with self.subTest(payload=payload):
                 response = subprocess.CompletedProcess([], returncode, json.dumps(payload), '')
                 with patch.object(server.subprocess, 'run', return_value=response):
-                    code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
-                self.assertEqual(code, expected)
+                    code, started = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+                    result = self.wait_for_picker(started['pickerId'])
+                self.assertEqual(code, 202)
+                self.assertEqual(result['status'], 'error')
                 self.assertTrue(result['error'])
                 self.assertFalse(server.FOLDER_PICKER_LOCK.locked())
+
+    def test_native_picker_rejects_missing_or_outdated_status_requests(self):
+        self.assertEqual(self.request('GET', '/api/folders/pick')[0], 404)
+        self.assertEqual(self.request('GET', '/api/folders/pick?id=old')[0], 404)
 
     def test_native_picker_allows_only_one_open_dialog(self):
         server.FOLDER_PICKER_LOCK.acquire()

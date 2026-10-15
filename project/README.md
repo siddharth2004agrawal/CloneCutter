@@ -33,6 +33,8 @@ For a built, standalone app, run `npm run build` and then `.venv/bin/python serv
 
 Native folder selection opens on the computer running the local server. Start the server in your desktop session. Linux uses Zenity or KDialog (preferring KDialog on KDE), with Python Tk as a fallback; install `zenity`, `kdialog`, or `python3-tk` if none is available. Windows and macOS use Python Tk's native system folder dialog, so your Python installation needs Tk support.
 
+If folder selection reports a connection error, stop the existing dev process with **Ctrl+C**, run `npm run dev` again from this directory, and reload the HTTP address printed by Vite. This starts both the UI and Python server; `npm run dev:web` starts only the UI. Restart after backend changes so the running server includes the latest folder picker API. The app checks for native picker support before opening the dialog and reports connection or desktop errors directly.
+
 ## Scan and delete copies
 
 1. Choose **Whole filesystem** and click **Scan filesystem**, or choose **Selected folders** and click **Choose folders** to open your operating system's native folder picker. Browse to a folder and confirm the selection to add it directly to the scan list. Cancel leaves your selections unchanged. Use **Add another folder** to select more locations, then click **Scan selected folders**. All subfolders and file types are included by default; filters can narrow the scan.

@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import { gsap } from 'gsap';
 import { FILE_TYPES } from '../lib/files.js';
-import { requestJson } from '../lib/api.js';
+import { pickFolder } from '../lib/api.js';
 import Icon from './Icon.jsx';
 
 export default function FolderControls({ app }) {
   const [picking, setPicking] = useState(false);
   const [pickerError, setPickerError] = useState('');
   const pickerPending = useRef(false);
+  const pickerAbort = useRef(null);
   const browseButton = useRef(null);
   const controlsRef = useRef(null);
   const previousMode = useRef(null);
   const previousFileTypes = useRef(app.fileTypes);
+
+  useEffect(() => () => pickerAbort.current?.abort(), []);
 
   useEffect(() => {
     const mode = app.scope;
@@ -44,17 +47,25 @@ export default function FolderControls({ app }) {
     pickerPending.current = true;
     setPicking(true);
     setPickerError('');
+    const controller = new AbortController();
+    pickerAbort.current = controller;
     try {
-      const selection = await requestJson(app.api.base, '/api/folders/pick', {
+      const connection = await app.connectApi();
+      if (controller.signal.aborted) return;
+      if (!connection?.available) throw new Error('Cannot reach the CloneCutter local server. Run npm run dev in the project folder, then reload this page.');
+      if (!connection.nativeFolderPicker) throw new Error('Restart npm run dev to load native folder selection, then reload this page.');
+      const selection = await pickFolder(connection.base, {
         ...(app.folders.length ? { initialPath: app.folders[app.folders.length - 1] } : {}),
-      });
+      }, controller.signal);
       if (selection.path) app.addFolder(selection.path);
     } catch (error) {
-      setPickerError(error.message || 'Could not open the native folder picker.');
+      if (!controller.signal.aborted) setPickerError(error.message || 'Could not open the native folder picker.');
     } finally {
       pickerPending.current = false;
-      setPicking(false);
-      browseButton.current?.focus();
+      if (!controller.signal.aborted) {
+        setPicking(false);
+        browseButton.current?.focus();
+      }
     }
   }
   return (

@@ -44,6 +44,7 @@ STATE_LOCK = threading.Lock()
 SCAN_STATE: dict = {}
 SCAN_CANCEL = threading.Event()
 FOLDER_PICKER_LOCK = threading.Lock()
+FOLDER_PICKER_STATE: dict = {}
 
 
 class ScanCancelled(Exception):
@@ -107,6 +108,28 @@ def pick_native_folder(initial=None):
         return {"path": path}
     finally:
         FOLDER_PICKER_LOCK.release()
+
+
+def start_folder_picker(initial=None):
+    initial = scan_folder(str(Path.home()) if initial is None else initial)
+    with STATE_LOCK:
+        if FOLDER_PICKER_STATE.get("status") == "picking" or FOLDER_PICKER_LOCK.locked():
+            raise ValueError("The folder picker is already open. Select a folder or cancel it first.")
+        picker_id = uuid.uuid4().hex
+        FOLDER_PICKER_STATE.clear()
+        FOLDER_PICKER_STATE.update(pickerId=picker_id, status="picking")
+
+    def work():
+        try:
+            selection = pick_native_folder(initial)
+            result = {"status": "complete" if selection["path"] else "cancelled", **selection}
+        except Exception as error:
+            result = {"status": "error", "error": str(error)}
+        with STATE_LOCK:
+            FOLDER_PICKER_STATE.update(result)
+
+    threading.Thread(target=work, daemon=True).start()
+    return picker_id
 
 
 def folder_shortcuts(roots):
@@ -420,7 +443,13 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/clonecutter-health":
-            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "trashName": trash_name(), "filesystemScan": True, "folderScan": True})
+            send_json(self, 200, {"ok": True, "canTrash": HAS_SEND2TRASH, "trashName": trash_name(), "filesystemScan": True, "folderScan": True, "nativeFolderPicker": True})
+            return
+        if parsed.path == "/api/folders/pick":
+            picker_id = parse_qs(parsed.query).get("id", [None])[0]
+            with STATE_LOCK:
+                state = dict(FOLDER_PICKER_STATE) if picker_id and picker_id == FOLDER_PICKER_STATE.get("pickerId") else None
+            send_json(self, 200 if state else 404, state or {"error": "Folder selection is no longer available. Choose a folder again."})
             return
         if parsed.path == "/api/folders":
             try:
@@ -471,7 +500,7 @@ class Handler(SimpleHTTPRequestHandler):
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object.")
             if route == "/api/folders/pick":
-                send_json(self, 200, pick_native_folder(data.get("initialPath")))
+                send_json(self, 202, {"pickerId": start_folder_picker(data.get("initialPath"))})
             elif route == "/api/scan":
                 scope = data.get("scope", "filesystem")
                 if scope not in {"filesystem", "folders"}:
