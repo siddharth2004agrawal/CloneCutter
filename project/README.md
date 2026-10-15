@@ -31,9 +31,11 @@ To run only the React UI during frontend work, use `npm run dev:web`.
 
 For a built, standalone app, run `npm run build` and then `.venv/bin/python server.py` (on Windows, `.venv\Scripts\python server.py`). Open http://127.0.0.1:8765.
 
+Native folder selection opens on the computer running the local server. Start the server in your desktop session. Linux uses Zenity or KDialog (preferring KDialog on KDE), with Python Tk as a fallback; install `zenity`, `kdialog`, or `python3-tk` if none is available. Windows and macOS use Python Tk's native system folder dialog, so your Python installation needs Tk support.
+
 ## Scan and delete copies
 
-1. Choose **Whole filesystem** and click **Scan filesystem**, or choose **Selected folders** and click **Choose folders** to open the folder picker popup. The popup lists folders and files (including hidden entries) in the current location, with folders first and file sizes shown. Use the Home, common-folder, or drive shortcuts, then click folder names to open them and **Add this folder** to select one. Files are shown for reference; select their containing folder to include them in a scan. Click breadcrumbs or **Up one level** to go back, and filter folders and files by name if needed. Cancel, the close button, clicking outside the popup, or Escape dismisses it. Add more folders if needed, then click **Scan selected folders**. No path typing is required; **Enter a path instead** is available as an optional shortcut. All file types are included by default; filters can narrow the scan.
+1. Choose **Whole filesystem** and click **Scan filesystem**, or choose **Selected folders** and click **Choose folders** to open your operating system's native folder picker. Browse to a folder and confirm the selection to add it directly to the scan list. Cancel leaves your selections unchanged. Use **Add another folder** to select more locations, then click **Scan selected folders**. All subfolders and file types are included by default; filters can narrow the scan.
 2. After the scan, review the duplicate files with filenames, full paths, sizes, and modification dates. Nothing is selected for deletion initially.
 3. Check the **Delete** boxes for the files you want to remove, or check **Select all** to select every extra copy across all result pages. Unselected files stay where they are. At least one identical copy must remain in each group. Select all leaves the oldest unselected copy in each group and preserves your existing manual selections. Uncheck individual files or use **Clear selection** to change your selection.
 4. Click **Delete selected** and review the confirmation showing the selected count, total size, and up to ten file paths. Confirm to move the chosen files to **Recycle Bin** on Windows or **Trash** on macOS/Linux. The local server uses `send2trash` to perform the native operation. If Trash access fails, the file stays in place and an error is shown. Restore moved files from the operating system’s Trash / Recycle Bin if needed.
@@ -57,4 +59,4 @@ npm test
 npm run build
 ```
 
-Tests use temporary files and a simulated Trash operation. They never scan the host filesystem or delete personal files.
+Tests use temporary files, simulated native picker responses, and a simulated Trash operation. They never open desktop dialogs, scan the host filesystem, or delete personal files.

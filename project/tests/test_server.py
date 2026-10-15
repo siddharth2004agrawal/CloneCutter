@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import subprocess
 import tempfile
 import threading
 import time
@@ -278,6 +279,46 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual([file['name'] for file in result['files']], ['.hidden-file', 'Another.txt', 'regular-file'])
         self.assertEqual(result['files'][1], {'name': 'Another.txt', 'path': str(self.root / 'Another.txt'), 'size': 5})
         self.assertEqual(result['roots'], server.filesystem_roots())
+
+    def test_native_picker_adds_validated_absolute_folder(self):
+        folder = self.root / 'photos & documents'
+        folder.mkdir()
+        response = subprocess.CompletedProcess([], 0, json.dumps({'path': str(folder)}), '')
+        with patch.object(server.subprocess, 'run', return_value=response) as run:
+            code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+        self.assertEqual((code, result), (200, {'path': str(folder)}))
+        self.assertEqual(run.call_args.args[0], [server.sys.executable, str(server.ROOT / 'scripts' / 'pick_folder.py'), str(self.root)])
+        self.assertFalse(server.FOLDER_PICKER_LOCK.locked())
+
+    def test_native_picker_cancel_does_not_select_a_folder(self):
+        response = subprocess.CompletedProcess([], 0, '{"path": null}', '')
+        with patch.object(server.subprocess, 'run', return_value=response):
+            code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+        self.assertEqual((code, result), (200, {'path': None}))
+
+    def test_native_picker_rejects_invalid_selection_and_reports_failures(self):
+        responses = [(0, {'path': 'relative/path'}, 400),
+                     (0, {'path': str(self.file('not-a-folder'))}, 400),
+                     (1, {'error': 'No desktop session available.'}, 500)]
+        for returncode, payload, expected in responses:
+            with self.subTest(payload=payload):
+                response = subprocess.CompletedProcess([], returncode, json.dumps(payload), '')
+                with patch.object(server.subprocess, 'run', return_value=response):
+                    code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+                self.assertEqual(code, expected)
+                self.assertTrue(result['error'])
+                self.assertFalse(server.FOLDER_PICKER_LOCK.locked())
+
+    def test_native_picker_allows_only_one_open_dialog(self):
+        server.FOLDER_PICKER_LOCK.acquire()
+        try:
+            with patch.object(server.subprocess, 'run') as run:
+                code, result = self.request('POST', '/api/folders/pick', {'initialPath': str(self.root)})
+            self.assertEqual(code, 400)
+            self.assertIn('already open', result['error'])
+            run.assert_not_called()
+        finally:
+            server.FOLDER_PICKER_LOCK.release()
 
     def test_folder_browser_handles_encoded_paths_and_empty_folders(self):
         from urllib.parse import quote

@@ -8,6 +8,7 @@ import math
 import mimetypes
 import os
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -42,6 +43,7 @@ OPERATION_LOCK = threading.Lock()
 STATE_LOCK = threading.Lock()
 SCAN_STATE: dict = {}
 SCAN_CANCEL = threading.Event()
+FOLDER_PICKER_LOCK = threading.Lock()
 
 
 class ScanCancelled(Exception):
@@ -80,6 +82,31 @@ def scan_folder(raw: str) -> str:
     if not path.is_dir():
         raise ValueError("Folder does not exist or is not accessible.")
     return str(path)
+
+
+def pick_native_folder(initial=None):
+    initial = scan_folder(str(Path.home()) if initial is None else initial)
+    if not FOLDER_PICKER_LOCK.acquire(blocking=False):
+        raise ValueError("The folder picker is already open. Select a folder or cancel it first.")
+    try:
+        result = subprocess.run([sys.executable, str(ROOT / "scripts" / "pick_folder.py"), initial],
+                                capture_output=True, text=True, encoding="utf-8")
+        try:
+            selection = json.loads(result.stdout)
+        except ValueError as error:
+            raise RuntimeError("Could not open the native folder picker. Make sure CloneCutter is running in your desktop session.") from error
+        if not isinstance(selection, dict):
+            raise RuntimeError("The native folder picker returned an invalid response.")
+        if result.returncode != 0 or selection.get("error"):
+            raise RuntimeError(selection.get("error") or "Could not open the native folder picker.")
+        path = selection.get("path")
+        if path is not None:
+            path = scan_folder(path)
+            with os.scandir(path):
+                pass
+        return {"path": path}
+    finally:
+        FOLDER_PICKER_LOCK.release()
 
 
 def folder_shortcuts(roots):
@@ -436,14 +463,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route not in {"/api/scan", "/api/scan/cancel", "/api/move"}:
+        if route not in {"/api/scan", "/api/scan/cancel", "/api/move", "/api/folders/pick"}:
             self.send_error(404)
             return
         try:
             data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or b"{}")
             if not isinstance(data, dict):
                 raise ValueError("Expected a JSON object.")
-            if route == "/api/scan":
+            if route == "/api/folders/pick":
+                send_json(self, 200, pick_native_folder(data.get("initialPath")))
+            elif route == "/api/scan":
                 scope = data.get("scope", "filesystem")
                 if scope not in {"filesystem", "folders"}:
                     raise ValueError("Select filesystem or folders as the scan scope.")
