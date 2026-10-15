@@ -2,10 +2,12 @@ import io
 import json
 import os
 import subprocess
+import shutil
 import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -58,6 +60,93 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(total, 3)
         self.assertEqual(len(groups), 1)
         self.assertEqual(len(groups[0]['files']), 2)
+
+    def test_copy_paste_in_the_same_folder_finds_renamed_copies(self):
+        original = self.file('holiday photo.JPG', b'photo contents' * 30000)
+        copies = [self.root / 'holiday photo (copy).JPG', self.root / 'holiday photo (2).JPG']
+        shutil.copy2(original, copies[0])
+        shutil.copyfile(original, copies[1])
+        summary = {}
+        groups, total = server.scan_duplicates([str(self.root)], ['all'], summary=summary)
+        self.assertEqual(total, 3)
+        self.assertEqual(summary['skipped'], 0)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual({file['path'] for file in groups[0]['files']}, {str(original), *map(str, copies)})
+
+    def test_duplicate_scan_accepts_stable_descriptor_ctime_different_from_path(self):
+        self.file('original.txt')
+        self.file('original (copy).txt')
+        real_fstat = server.os.fstat
+        def descriptor_stat(fd):
+            info = real_fstat(fd)
+            values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+            # Python on Windows can report change time by descriptor and birth time by path.
+            values['st_ctime_ns'] += 100_000_000
+            return SimpleNamespace(**values)
+        summary = {}
+        with patch.object(server.os, 'fstat', side_effect=descriptor_stat):
+            groups, total = server.scan_duplicates([str(self.root)], ['all'], summary=summary)
+        self.assertEqual(total, 2)
+        self.assertEqual(summary['skipped'], 0)
+        self.assertEqual(len(groups), 1)
+
+    def test_descriptor_metadata_change_during_hash_is_still_rejected(self):
+        original = self.file('original.txt')
+        expected = server.signature(os.lstat(original))
+        real_fstat = server.os.fstat
+        calls = [0]
+        def changed_descriptor(fd):
+            info = real_fstat(fd)
+            values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+            calls[0] += 1
+            values['st_ctime_ns'] += calls[0] * 100_000_000
+            return SimpleNamespace(**values)
+        with patch.object(server.os, 'fstat', side_effect=changed_descriptor):
+            with self.assertRaisesRegex(OSError, 'changed while being read'):
+                server.hash_path(str(original), expected)
+
+    def test_trash_verification_accepts_stable_cross_api_ctime_difference(self):
+        self.prepare()
+        real_fstat = server.os.fstat
+        def descriptor_stat(fd):
+            info = real_fstat(fd)
+            values = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+            values['st_ctime_ns'] += 100_000_000
+            return SimpleNamespace(**values)
+        with patch.object(server.os, 'fstat', side_effect=descriptor_stat):
+            result = self.move([self.copy])
+        self.assertEqual(result['moved'], [str(self.copy)])
+        self.assertEqual(result['errors'], [])
+        self.assertTrue(self.original.exists())
+
+    def test_filters_and_unreadable_files_are_reported_without_double_counting_overlaps(self):
+        self.file('original.txt')
+        self.file('original (copy).TXT')
+        blocked = self.file('nested/unreadable.txt')
+        self.file('nested/filtered.bin', b'other')
+        real_hash = server.hash_path
+        def inaccessible(path, *args, **kwargs):
+            if path == str(blocked):
+                raise PermissionError('File cannot be read.')
+            return real_hash(path, *args, **kwargs)
+        summary = {}
+        with patch.object(server, 'hash_path', side_effect=inaccessible):
+            groups, total = server.scan_duplicates([str(self.root), str(self.root / 'nested')], ['document'], summary=summary)
+        self.assertEqual(total, 3)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(summary['discoveredFiles'], 4)
+        self.assertEqual(summary['filteredFiles'], 1)
+        self.assertEqual(summary['candidateFiles'], 3)
+        self.assertEqual(summary['verifiedFiles'], 2)
+        self.assertEqual(summary['skipped'], 1)
+        self.assertEqual(summary['skippedDetails'], [{'path': str(blocked), 'reason': 'File cannot be read.'}])
+
+    def test_skipped_details_are_bounded(self):
+        summary = {}
+        for index in range(30):
+            server.record_scan_skip(summary, f'/unreadable/{index}', PermissionError('Unreadable'))
+        self.assertEqual(summary['skipped'], 30)
+        self.assertEqual(len(summary['skippedDetails']), 20)
 
     def test_same_size_and_sample_do_not_imply_identical_contents(self):
         prefix = b'a' * (256 * 1024)
@@ -449,6 +538,29 @@ class FilesystemTests(unittest.TestCase):
         self.assertNotIn('signature', result['duplicates'][0]['files'][0])
         self.assertEqual(server.LAST_SCAN_ID, started['scanId'])
         self.assertEqual(self.request('GET', '/api/scan?id=stale')[0], 404)
+
+    def test_copy_paste_duplicates_are_returned_through_both_scan_scopes(self):
+        expected = []
+        for index, name in enumerate(['photo.JPG', 'document.pdf', 'binary.data', 'no-extension', '.hidden', 'holiday résumé.txt']):
+            original = self.file(name, bytes([index]) * (300_000 + index))
+            copy = original.with_name(f'{original.stem} (copy){original.suffix}')
+            shutil.copy2(original, copy)
+            expected.append({str(original), str(copy)})
+        self.file('empty.txt', b'')
+        self.file('empty (copy).txt', b'')
+        expected.append({str(self.root / 'empty.txt'), str(self.root / 'empty (copy).txt')})
+        for scope in ['folders', 'filesystem']:
+            with self.subTest(scope=scope), patch.object(server, 'filesystem_roots', return_value=[str(self.root)]):
+                code, started = self.request('POST', '/api/scan', {'scope': scope, 'roots': [str(self.root)], 'file_types': ['all']})
+                self.assertEqual(code, 202)
+                result = self.wait_for_scan(started['scanId'])
+            self.assertEqual(result['status'], 'complete')
+            self.assertEqual(result['totalFiles'], 14)
+            self.assertEqual(result['skipped'], 0)
+            self.assertEqual(result['fileTypes'], ['all'])
+            self.assertEqual(result['diagnostics']['verifiedFiles'], 14)
+            actual = [{file['path'] for file in group['files']} for group in result['duplicates']]
+            self.assertCountEqual([frozenset(group) for group in actual], [frozenset(group) for group in expected])
 
     def test_api_rejects_empty_types_and_health_exposes_trash_support(self):
         code, _ = self.request('POST', '/api/scan', {'file_types': []})

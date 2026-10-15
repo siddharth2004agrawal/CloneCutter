@@ -7,9 +7,9 @@ afterEach(() => {
   delete globalThis.window;
 });
 
-test('network failures explain how to start the local server without retrying the request', async () => {
+test('network failures give an actionable message without retrying the request', async () => {
   const fetch = mock.method(globalThis, 'fetch', async () => { throw new TypeError('Failed to fetch'); });
-  await assert.rejects(requestJson('', '/api/folders/pick', {}), /Cannot reach.*npm run dev/);
+  await assert.rejects(requestJson('', '/api/folders/pick', {}), /unavailable.*Reopen the app/);
   assert.equal(fetch.mock.callCount(), 1);
 });
 
@@ -20,11 +20,11 @@ test('aborted requests keep their cancellation error', async () => {
   await assert.rejects(requestJson('', '/api/folders/pick', {}, controller.signal), { name: 'AbortError' });
 });
 
-test('an unavailable proxy or unexpected HTML response explains how to restart the server', async () => {
+test('unavailable or unexpected responses give a message without implementation details', async () => {
   const fetch = mock.method(globalThis, 'fetch', async () => new Response('', { status: 502 }));
-  await assert.rejects(requestJson('', '/api/clonecutter-health'), /local server is unavailable.*npm run dev/);
+  await assert.rejects(requestJson('', '/api/clonecutter-health'), /could not complete.*Reopen the app/);
   fetch.mock.mockImplementation(async () => new Response('<html>Page not found</html>', { status: 404 }));
-  await assert.rejects(requestJson('', '/api/folders/pick', {}), /unexpected response.*npm run dev/);
+  await assert.rejects(requestJson('', '/api/folders/pick', {}), /Something went wrong.*Reopen CloneCutter/);
 });
 
 test('server errors preserve their useful error message', async () => {

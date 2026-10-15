@@ -52,8 +52,8 @@ export default function FolderControls({ app }) {
     try {
       const connection = await app.connectApi();
       if (controller.signal.aborted) return;
-      if (!connection?.available) throw new Error('Cannot reach the CloneCutter local server. Run npm run dev in the project folder, then reload this page.');
-      if (!connection.nativeFolderPicker) throw new Error('Restart npm run dev to load native folder selection, then reload this page.');
+      if (!connection?.available) throw new Error('The folder picker is unavailable right now. Reopen CloneCutter and try again.');
+      if (!connection.nativeFolderPicker) throw new Error('Reopen CloneCutter to enable folder selection, then try again.');
       const selection = await pickFolder(connection.base, {
         ...(app.folders.length ? { initialPath: app.folders[app.folders.length - 1] } : {}),
       }, controller.signal);
@@ -69,54 +69,61 @@ export default function FolderControls({ app }) {
     }
   }
   return (
-    <section className="upload-section" aria-label="Scan setup" ref={controlsRef}>
+    <section id="scan-setup" className="upload-section" aria-labelledby="scan-title" tabIndex={-1} ref={controlsRef}>
       <div className="section-heading">
-        <div><p className="eyebrow">01 / Scan</p><h3>{app.scope === 'folders' ? 'Your selected folders' : 'Your whole filesystem'}</h3></div>
-        <span className="section-symbol"><Icon name="folder" size={20} /></span>
+        <div><p className="eyebrow">Ready when you are</p><h2 id="scan-title">Let’s find your extra copies.</h2><p className="section-description">Choose where to look. We’ll take it from there.</p></div>
+        <span className="section-symbol"><Icon name="search" size={24} /></span>
       </div>
-      <fieldset className="scan-scope" disabled={app.busy || picking}>
-        <legend>Where to search</legend>
-        <label><input type="radio" name="scanScope" checked={app.scope === 'filesystem'} onChange={() => app.setScope('filesystem')} />Whole filesystem</label>
-        <label><input type="radio" name="scanScope" checked={app.scope === 'folders'} onChange={() => app.setScope('folders')} />Selected folders</label>
-      </fieldset>
-      {app.scope === 'filesystem' ? <div className="folder-list is-empty">
-        <div className="empty-folders">
-          <span className="empty-folder-icon"><Icon name="layers" size={28} /></span>
-          <p>Find copies across your computer</p>
-          <span>Scan all accessible files and mounted drives.<br />No folder selection needed.</span>
-        </div>
-      </div> : <>
-        <div className={`folder-list${app.folders.length ? '' : ' is-empty'}`} aria-label="Selected scan folders">
-          {app.folders.length ? app.folders.map((path) => (
-            <div className="folder-item" key={path}>
-              <Icon name="folder" size={19} />
-              <div className="folder-item-info"><span>{path}</span><small>Includes all subfolders</small></div>
-              <button type="button" className="icon-button" aria-label={`Remove ${path} from scan`} disabled={app.busy || picking} onClick={() => app.removeFolder(path)}><Icon name="close" size={15} /></button>
+      <div className="scan-options">
+        <div className="scan-location">
+          <fieldset className="scan-scope" disabled={app.busy || picking}>
+            <legend>Where should we look?</legend>
+            <label><Icon name="folder" size={20} /><span><strong>Selected folders</strong><small>Start with a few places</small></span><input type="radio" name="scanScope" checked={app.scope === 'folders'} onChange={() => app.setScope('folders')} /></label>
+            <label><Icon name="drive" size={20} /><span><strong>Entire computer</strong><small>Give everything a once-over</small></span><input type="radio" name="scanScope" checked={app.scope === 'filesystem'} onChange={() => app.setScope('filesystem')} /></label>
+          </fieldset>
+          {app.scope === 'filesystem' ? <div className="folder-list is-empty">
+            <div className="empty-folders">
+              <span className="empty-folder-icon"><Icon name="drive" size={27} /></span>
+              <p>The bigger picture.</p>
+              <span>Look for identical files across accessible folders and drives. A full scan may take a little longer.</span>
             </div>
-          )) : <div className="empty-folders">
-            <span className="empty-folder-icon"><Icon name="folder" size={28} /></span>
-            <p>Select folders to search</p>
-            <span>Click Choose folders to open your system’s folder picker.<br />Subfolders are included automatically.</span>
-          </div>}
+          </div> : <>
+            <div className={`folder-list${app.folders.length ? '' : ' is-empty'}`} aria-label="Selected scan folders">
+              {app.folders.length ? app.folders.map((path) => (
+                <div className="folder-item" key={path}>
+                  <Icon name="folder" size={19} />
+                  <div className="folder-item-info"><span>{path}</span><small>Includes all subfolders</small></div>
+                  <button type="button" className="icon-button" aria-label={`Remove ${path} from scan`} disabled={app.busy || picking} onClick={() => app.removeFolder(path)}><Icon name="close" size={15} /></button>
+                </div>
+              )) : <div className="empty-folders">
+                <span className="empty-folder-icon"><Icon name="folder" size={28} /></span>
+                <p>A good place to start.</p>
+                <span>Choose your Pictures, Downloads, or any folder you’d like to tidy. Subfolders come along too.</span>
+              </div>}
+            </div>
+            <div className="folder-buttons">
+              <button ref={browseButton} type="button" className="btn-secondary" disabled={app.busy || picking} onClick={chooseFolder}><Icon name="plus" size={15} />{picking ? 'Choosing folder…' : app.folders.length ? 'Add another folder' : 'Choose folders'}</button>
+            </div>
+            {picking && <p className="scan-scope-note" role="status">Select a folder in the system dialog, or cancel to return.</p>}
+            {pickerError && <p className="app-message app-error" role="alert">{pickerError}</p>}
+          </>}
         </div>
-        <div className="folder-buttons">
-          <button ref={browseButton} type="button" className="btn-secondary" disabled={app.busy || picking || !app.api.available} onClick={chooseFolder}><Icon name="folder" size={15} />{picking ? 'Choosing folder…' : app.folders.length ? 'Add another folder' : 'Choose folders'}</button>
+        <div className="scan-preferences">
+          <fieldset className="file-types" disabled={app.busy}>
+            <legend>What are we looking for?</legend>
+            <p>Cast a wide net, or choose the file types you want to tidy.</p>
+            {FILE_TYPES.map(([type, label]) => (
+              <label key={type} className={app.fileTypes.includes(type) ? ' is-checked' : ''}>
+                <input type="checkbox" value={type} checked={app.fileTypes.includes(type)} disabled={app.busy} onChange={(event) => app.toggleFileType(type, event.target.checked)} />{label}
+              </label>
+            ))}
+          </fieldset>
+          <p className="scan-scope-note"><Icon name="shield" size={16} /><span>Special system folders, linked files, and Trash are skipped. We only check files you can access.</span></p>
         </div>
-        {picking && <p className="scan-scope-note" role="status">Select a folder in the system dialog, or cancel to return.</p>}
-        {pickerError && <p className="app-message app-error" role="alert">{pickerError}</p>}
-      </>}
-      <p className="scan-scope-note">Virtual system files, symbolic links, and Trash are excluded. Files and folders your account cannot read are skipped.</p>
-      <div className="file-types">
-        <h4>Look for duplicates in</h4>
-        {FILE_TYPES.map(([type, label]) => (
-          <label key={type} className={app.fileTypes.includes(type) ? ' is-checked' : ''}>
-            <input type="checkbox" value={type} checked={app.fileTypes.includes(type)} disabled={app.busy} onChange={(event) => app.toggleFileType(type, event.target.checked)} />{label}
-          </label>
-        ))}
       </div>
       <div className="scan-footer">
-        <span><Icon name="shield" size={14} />Nothing is removed during a scan.</span>
-        <button id="startScan" type="button" className="btn-primary" disabled={!app.canScan || picking} onClick={app.startScan}>{app.scope === 'folders' ? 'Scan selected folders' : 'Scan filesystem'}<Icon name="arrow" size={17} /></button>
+        <span><Icon name="shield" size={16} />A scan finds matches. You decide what goes.</span>
+        <button id="startScan" type="button" className="btn-primary" disabled={!app.canScan || picking} onClick={app.startScan}>Find duplicates<Icon name="arrow" size={17} /></button>
       </div>
     </section>
   );

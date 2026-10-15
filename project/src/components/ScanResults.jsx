@@ -26,6 +26,13 @@ export default function ScanResults({ app }) {
   const selectAllRef = useRef(null);
   const sectionRef = useRef(null);
   const previousSelection = useRef(app.selectedCount);
+  const diagnostics = app.scanSource.diagnostics || {};
+  const incomplete = app.scanSource.skipped > 0;
+
+  useEffect(() => {
+    sectionRef.current?.focus({ preventScroll: true });
+    sectionRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [app.scanSource.scanId]);
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = matchingSelected > 0 && matchingSelected < matchingExtras;
   }, [matchingExtras, matchingSelected]);
@@ -85,17 +92,24 @@ export default function ScanResults({ app }) {
     return () => animations.revert();
   }, [query, sort]);
   return (
-    <section id="resultsSection" className="results-section" aria-label="Scan results" aria-busy={app.busy} ref={sectionRef}>
+    <section id="resultsSection" className="results-section" aria-label="Scan results" aria-busy={app.busy} tabIndex={-1} ref={sectionRef}>
       <div className="section-heading results-heading">
-        <div><p className="eyebrow">02 / Review</p><h3>{app.duplicates.length ? 'Choose the copies to delete.' : 'Everything in its place.'}</h3></div>
-        <span className="results-source">{app.scanSource.scope === 'folders' ? 'Selected folders' : 'Whole filesystem'}</span>
+        <div><p className="eyebrow">02 / Review</p><h3>{app.duplicates.length ? 'Choose the copies to delete.' : incomplete || !app.totalFiles ? 'Your scan needs another look.' : 'Your scan is complete.'}</h3></div>
+        <span className="results-source">{app.scanSource.scope === 'folders' ? 'Selected folders' : 'Entire computer'}</span>
       </div>
       <div className="stats">
         <div className="stat"><span id="totalDuplicates">{extraCopies.toLocaleString()}</span><small>Duplicate Copies · {app.duplicates.length.toLocaleString()} groups</small></div>
-        <div className="stat"><span id="totalFiles">{app.totalFiles.toLocaleString()}</span><small>Files Checked in Last Scan</small></div>
+        <div className="stat"><span id="totalFiles">{app.totalFiles.toLocaleString()}</span><small>Files Included in This Scan</small></div>
         <div className="stat"><span id="spaceSaved">{formatBytes(spaceSaved)}</span><small>Potential Space Saved</small></div>
       </div>
-      <p className="scan-scope-note">Scanned: {app.scanSource.roots?.join(', ')}. Virtual files, links, and Trash excluded.{app.scanSource.skipped > 0 && ` ${app.scanSource.skipped.toLocaleString()} inaccessible or changed files / folders skipped.`}</p>
+      <p className="scan-scope-note">Scanned: {app.scanSource.roots?.join(', ')}. Identical contents are matched even when filenames are different. Virtual files, links, and Trash are excluded.</p>
+      {diagnostics.filteredFiles > 0 && <p className="scan-filter-note" role="status">{diagnostics.filteredFiles.toLocaleString()} files were excluded by your file-type filters. Select <strong>All Files</strong> in the scan setup to include them in your next scan.</p>}
+      {incomplete && <div className="scan-diagnostics" role="status">
+        <p><strong>{app.scanSource.skipped.toLocaleString()} files or folders could not be checked.</strong> They may be unreadable or have changed during the scan. These locations may still contain duplicates.</p>
+        {diagnostics.skippedDetails?.length > 0 && <details><summary>See skipped locations{app.scanSource.skipped > diagnostics.skippedDetails.length ? ` (first ${diagnostics.skippedDetails.length})` : ''}</summary><ul>
+          {diagnostics.skippedDetails.map((entry, index) => <li key={`${entry.path}:${index}`}><span>{entry.path}</span><small>{entry.reason}</small></li>)}
+        </ul></details>}
+      </div>}
       {app.duplicates.length > 0 && <>
         <div className="results-tools">
           <label className="results-search">
@@ -111,7 +125,7 @@ export default function ScanResults({ app }) {
           <button type="button" className="btn-secondary export-button" onClick={exportCsv} title="Download all duplicate matches with their current selection status"><Icon name="download" size={14} />Export CSV</button>
         </div>
         <p className="actions-hint">Select individual files for review, or use <strong>Select all</strong> to choose every extra copy{query.trim() ? ' matching your search' : ' across all results'}. At least one copy in each group stays. Export CSV downloads all duplicate matches and their current selection status.</p>
-        {!app.deleteAllowed && <p className="delete-support-note" role="status">Deletion requires a connected local server with send2trash installed.</p>}
+        {!app.deleteAllowed && <p className="delete-support-note" role="status">Moving files to {app.trashName} is unavailable right now. Reopen CloneCutter and scan again to continue.</p>}
         <div className="actions">
           <label className="select-all-control">
             <input id="selectAll" ref={selectAllRef} type="checkbox" disabled={app.busy || matchingExtras === 0} checked={matchingExtras > 0 && matchingSelected === matchingExtras} onChange={(event) => app.selectCopies(event.target.checked, matchingGroups.map((group) => group.id))} />
@@ -125,7 +139,7 @@ export default function ScanResults({ app }) {
       <div id="duplicatesList" className="duplicates-list">
         {app.duplicates.length && sortedGroups.length ? sortedGroups.slice(currentPage * pageSize, (currentPage + 1) * pageSize).map((group) => (
           <DuplicateGroup key={group.id} group={group} onToggle={app.toggleCopy} disabled={app.busy} serverBase={app.scanSource.base} trashName={app.trashName} />
-        )) : <div className="empty-results" role="status"><span className="empty-result-icon"><Icon name="check" size={24} /></span><p>{app.duplicates.length ? 'No matching duplicate groups.' : 'No duplicate copies found.'}</p><span>{app.duplicates.length ? 'Try another filename or path, or clear your search.' : 'Your selected locations contain no identical copies.'}</span>{app.duplicates.length > 0 && <button type="button" className="text-button" onClick={() => setQuery('')}>Clear search</button>}</div>}
+        )) : <div className="empty-results" role="status"><span className="empty-result-icon"><Icon name={incomplete || !app.totalFiles ? 'search' : 'check'} size={24} /></span><p>{app.duplicates.length ? 'No matching duplicate groups.' : !app.totalFiles ? 'No files were included in this scan.' : 'No identical copies found in the checked files.'}</p><span>{app.duplicates.length ? 'Try another filename or path, or clear your search.' : incomplete ? 'Review the skipped locations above and scan again when those files are accessible.' : diagnostics.filteredFiles > 0 ? 'Include All Files and make sure the folder containing your copies is selected.' : 'Select the folder containing both the original and its pasted copies, then scan again.'}</span>{app.duplicates.length > 0 && <button type="button" className="text-button" onClick={() => setQuery('')}>Clear search</button>}</div>}
       </div>
       {pages > 1 && <nav className="results-pagination" aria-label="Duplicate result pages">
         <button className="btn-secondary" type="button" disabled={app.busy || currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</button>

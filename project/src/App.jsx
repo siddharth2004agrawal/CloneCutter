@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import FolderControls from './components/FolderControls.jsx';
 import ScanResults from './components/ScanResults.jsx';
 import Icon from './components/Icon.jsx';
+import LandingHero from './components/LandingHero.jsx';
 import { formatBytes } from './lib/files.js';
 import { formatDuration, formatRemainingTime } from './lib/scanTime.js';
 
@@ -17,20 +18,10 @@ export default function App() {
     animations.add('(prefers-reduced-motion: no-preference)', () => {
       gsap.timeline({ defaults: { duration: 0.55, ease: 'power2.out' } })
         .from('.app-header', { y: -10, autoAlpha: 0 })
-        .from('.intro > *', { y: 18, autoAlpha: 0, stagger: 0.12 }, '-=0.28')
-        .from('.hero-orbit', { scale: 0.86, autoAlpha: 0, stagger: 0.1, duration: 0.8 }, '-=0.42')
-        .from('.hero-file-stack', { y: 9, scale: 0.92, autoAlpha: 0, duration: 0.48 }, '-=0.58')
-        .from('.cleared-summary', { y: 12, autoAlpha: 0 }, '-=0.3')
+        .from('.hero-copy > *', { y: 18, autoAlpha: 0, stagger: 0.09 }, '-=0.28')
+        .from('.hero-preview', { y: 20, rotate: 2, autoAlpha: 0, duration: 0.7 }, '-=0.55')
+        .from('.workflow-step', { y: 10, autoAlpha: 0, stagger: 0.08 }, '-=0.35')
         .from('.upload-section', { y: 15, autoAlpha: 0 }, '-=0.3');
-    }, shell);
-    return () => animations.revert();
-  }, []);
-
-  useEffect(() => {
-    const animations = gsap.matchMedia();
-    animations.add('(prefers-reduced-motion: no-preference)', () => {
-      gsap.to('.hero-file-stack', { y: -3, delay: 1.25, duration: 2.8, repeat: -1, yoyo: true, ease: 'sine.inOut' });
-      gsap.to('.intro-eyebrow-dot', { scale: 1.18, duration: 1.8, repeat: -1, yoyo: true, ease: 'sine.inOut' });
     }, shell);
     return () => animations.revert();
   }, []);
@@ -82,30 +73,27 @@ export default function App() {
           <span className="brand-mark"><Icon name="layers" size={21} /></span>
           <h1>CloneCutter<span>Duplicate file manager</span></h1>
         </div>
-        <button type="button" className={`connection-status${app.api.available ? ' connected' : ''}`} role="status" onClick={app.connectApi} disabled={app.api.checking || app.busy} title="Check local server status">
-          <span className="status-dot" />
-          {app.api.checking ? 'Connecting…' : app.api.available ? 'Local server connected' : 'Local server offline'}
-        </button>
+        <nav className="header-nav" aria-label="Main navigation">
+          <a href="#how-it-works" className="nav-link">How it works</a>
+          <a href={working ? '#progressSection' : '#scan-setup'} className="btn-primary">{working ? 'View progress' : 'Find duplicates'}<Icon name="arrow" size={15} /></a>
+        </nav>
       </header>
 
-      <section className="intro" aria-label="Welcome">
-        <div>
-          <p className="eyebrow"><span className="intro-eyebrow-dot" />Local file review</p>
-          <h2>Find the copies.<br /><span>Keep what matters.</span></h2>
-          <p className="intro-description">Review identical files, select what to remove, and move<br className="desktop-break" /> your selections to {app.trashName}.</p>
-        </div>
-        <div className="hero-art" aria-hidden="true">
-          <span className="hero-orbit hero-orbit-outer" />
-          <span className="hero-orbit hero-orbit-inner" />
-          <div className="hero-file-stack"><Icon name="layers" size={49} /></div>
-          <span className="hero-art-label">MATCH · REVIEW · KEEP</span>
-        </div>
+      <LandingHero trashName={app.trashName} working={working} />
+
+      <section id="how-it-works" className="workflow" aria-label="How it works">
+        <div className="workflow-intro"><p className="eyebrow">A little order, in three steps</p><h2>Less clutter.<br />More breathing room.</h2></div>
+        <ol className="workflow-steps">
+          <li className="workflow-step"><span className="step-number">01</span><div><h3>Find your matches</h3><p>Choose a few folders or your entire computer. We compare file contents to find identical copies.</p></div></li>
+          <li className="workflow-step"><span className="step-number">02</span><div><h3>You make the call</h3><p>Review each match and choose what goes. At least one copy in every group stays.</p></div></li>
+          <li className="workflow-step"><span className="step-number">03</span><div><h3>Make a little space</h3><p>Move selected copies to {app.trashName}. You can restore them until you empty it.</p></div></li>
+        </ol>
       </section>
 
       {app.error && <div className="app-message app-error" role="alert">{app.error}</div>}
       {app.notice && <div className="app-message app-notice" role="status">{app.notice}</div>}
 
-      <section className="cleared-summary" aria-label="Deletion summary" role="status" aria-live="polite" aria-atomic="true">
+      {app.cleared.files > 0 && <section className="cleared-summary" aria-label="Deletion summary" role="status" aria-live="polite" aria-atomic="true">
         <div className="cleared-metric">
           <span className="cleared-icon"><Icon name="trash" size={19} /></span>
           <div>
@@ -115,7 +103,7 @@ export default function App() {
         </div>
         <p className="cleared-files">{app.cleared.files.toLocaleString()} {app.cleared.files === 1 ? 'file' : 'files'} moved this session</p>
         <p className="cleared-note">Empty your {app.trashName} to reclaim disk space.</p>
-      </section>
+      </section>}
 
       <div className={`workspace-grid${working ? ' is-working' : ''}`}>
         {!working && <FolderControls app={app} />}
@@ -141,8 +129,8 @@ export default function App() {
       {app.scanSource && !working && <ScanResults app={app} />}
 
       <footer className="app-footer">
-        <span><Icon name="shield" size={14} /> Checked on this computer</span>
-        <span>Only selected files move to {app.trashName}.</span>
+        <span className="footer-brand"><Icon name="layers" size={17} />CloneCutter<span>A little space goes a long way.</span></span>
+        <span><Icon name="shield" size={14} />Your files. Your decisions.</span>
       </footer>
     </main>
   );

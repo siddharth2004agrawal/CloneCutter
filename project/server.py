@@ -186,11 +186,18 @@ def check_cancel(cancel):
         raise ScanCancelled()
 
 
+def record_scan_skip(summary, path, error):
+    summary["skipped"] = summary.get("skipped", 0) + 1
+    details = summary.setdefault("skippedDetails", [])
+    if len(details) < 20:
+        details.append({"path": str(path) if path else "Unknown path", "reason": str(error)})
+
+
 def walk_files(roots, summary=None, cancel=None):
     """Yield real regular files, without following links or opening devices."""
     summary = summary if summary is not None else {"skipped": 0}
-    def inaccessible(_error):
-        summary["skipped"] += 1
+    def inaccessible(error):
+        record_scan_skip(summary, error.filename, error)
     for raw in dict.fromkeys(roots):
         root = os.path.abspath(raw)
         if os.path.islink(root) or excluded_directory(root):
@@ -206,8 +213,8 @@ def walk_files(roots, summary=None, cancel=None):
                     info = os.lstat(path)
                     if stat.S_ISREG(info.st_mode):
                         yield path, info
-                except OSError:
-                    summary["skipped"] += 1
+                except OSError as error:
+                    record_scan_skip(summary, path, error)
 
 
 def signature(info):
@@ -216,12 +223,17 @@ def signature(info):
 
 def hash_path(path, expected, *, quick=False, cancel=None, on_progress=None):
     """Reject changed files and symlinks, including replacements during hashing."""
-    if signature(os.lstat(path)) != expected or not stat.S_ISREG(os.lstat(path).st_mode):
+    path_info = os.lstat(path)
+    if signature(path_info) != expected or not stat.S_ISREG(path_info.st_mode):
         raise OSError("File changed since the scan; scan again.")
     fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or signature(info) != expected:
+        opened_signature = signature(info)
+        # Some Python/Windows versions report birth time via lstat and change
+        # time via fstat. Compare identity, size, and mtime across the APIs;
+        # compare each API's complete signature against its own snapshot.
+        if not stat.S_ISREG(info.st_mode) or opened_signature[:4] != expected[:4]:
             raise OSError("File changed since the scan; scan again.")
         digest = hashlib.sha256()
         while True:
@@ -234,7 +246,7 @@ def hash_path(path, expected, *, quick=False, cancel=None, on_progress=None):
                 on_progress(len(block))
             if quick:
                 break
-        if signature(os.fstat(stream.fileno())) != expected:
+        if signature(os.fstat(stream.fileno())) != opened_signature:
             raise OSError("File changed while being read; scan again.")
     if signature(os.lstat(path)) != expected:
         raise OSError("File changed while being read; scan again.")
@@ -243,9 +255,11 @@ def hash_path(path, expected, *, quick=False, cancel=None, on_progress=None):
 
 def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None):
     summary = summary if summary is not None else {}
-    summary.update(skipped=0, totalFiles=0, roots=roots)
+    summary.update(skipped=0, skippedDetails=[], totalFiles=0, roots=roots,
+                   discoveredFiles=0, filteredFiles=0, candidateFiles=0, verifiedFiles=0)
     sizes = defaultdict(list)
     seen = set()
+    seen_paths = set()
     last_report = 0
     started = time.monotonic()
     hashing_started = None
@@ -265,7 +279,13 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
             last_report = now
     report(0, "Discovering files in scan locations…", True)
     for path, info in walk_files(roots, summary, cancel):
+        path_key = os.path.normcase(os.path.abspath(path))
+        if path_key in seen_paths:
+            continue
+        seen_paths.add(path_key)
+        summary["discoveredFiles"] += 1
         if not file_type_allowed(path, file_types):
+            summary["filteredFiles"] += 1
             continue
         # Hard links share storage; removing one cannot reclaim another copy's size.
         identity = (info.st_dev, info.st_ino) if info.st_ino else path
@@ -278,6 +298,7 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
                                     "signature": signature(info)})
         report(5, f"Discovered {summary['totalFiles']:,} files · {path}")
     candidates = [file for group in sizes.values() if len(group) > 1 for file in group]
+    summary["candidateFiles"] = len(candidates)
     # Include one unit per file so empty files still contribute to the estimate.
     sample_work = sum(min(file["size"], 256 * 1024) + 1 for file in candidates)
     # Until sampling finishes, assume every candidate needs full verification.
@@ -299,8 +320,8 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
         try:
             digest = hash_path(file["path"], file["signature"], quick=True, cancel=cancel, on_progress=hash_progress)
             quick_groups[(file["size"], digest)].append(file)
-        except OSError:
-            summary["skipped"] += 1
+        except OSError as error:
+            record_scan_skip(summary, file["path"], error)
         processed_work = before + min(file["size"], 256 * 1024) + 1
         hash_progress(0)
     candidates = [file for group in quick_groups.values() if len(group) > 1 for file in group]
@@ -317,8 +338,9 @@ def scan_duplicates(roots, file_types, progress=None, cancel=None, summary=None)
         try:
             digest = hash_path(file["path"], file["signature"], cancel=cancel, on_progress=hash_progress)
             full_groups[(file["size"], digest)].append(file)
-        except OSError:
-            summary["skipped"] += 1
+            summary["verifiedFiles"] += 1
+        except OSError as error:
+            record_scan_skip(summary, file["path"], error)
         processed_work = before + file["size"] + 1
         hash_progress(0)
     check_cancel(cancel)
@@ -401,7 +423,9 @@ def start_scan(roots, file_types):
                 public = [{**group, "files": [{key: value for key, value in file.items() if key != "signature"}
                                                for file in group["files"]]} for group in duplicates]
                 SCAN_STATE.update(status="complete", duplicates=public, totalFiles=total,
-                                  skipped=summary["skipped"], roots=roots)
+                                  skipped=summary["skipped"], roots=roots, fileTypes=file_types,
+                                  diagnostics={key: summary[key] for key in
+                                               ("discoveredFiles", "filteredFiles", "candidateFiles", "verifiedFiles", "skippedDetails")})
         except ScanCancelled:
             with STATE_LOCK:
                 SCAN_STATE.update(status="cancelled")

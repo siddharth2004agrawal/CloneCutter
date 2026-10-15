@@ -11,17 +11,17 @@ export async function requestJson(base, path, body, signal) {
     });
   } catch (error) {
     if (signal?.aborted || error.name === 'AbortError') throw error;
-    throw new Error('Cannot reach the CloneCutter local server. Run npm run dev in the project folder, then reload this page.', { cause: error });
+    throw new Error('CloneCutter is unavailable right now. Reopen the app and try again.', { cause: error });
   }
   if (response.status === 502 || response.status === 503 || response.status === 504) {
-    throw new Error('The CloneCutter local server is unavailable. Restart npm run dev in the project folder, then reload this page.');
+    throw new Error('CloneCutter could not complete that request. Reopen the app and try again.');
   }
   let data;
   try {
     data = await response.json();
   } catch (error) {
     if (signal?.aborted || error.name === 'AbortError') throw error;
-    throw new Error('The local server returned an unexpected response. Restart npm run dev in the project folder, then reload this page.', { cause: error });
+    throw new Error('Something went wrong. Reopen CloneCutter and try again.', { cause: error });
   }
   if (!response.ok) throw new Error(data.error || response.statusText || 'Request failed');
   return data;
@@ -48,7 +48,7 @@ export async function discoverApi(signal) {
 
 export async function pickFolder(base, body, signal) {
   const started = await requestJson(base, '/api/folders/pick', body, signal);
-  if (!started.pickerId) throw new Error('Restart npm run dev to load native folder selection, then reload this page.');
+  if (!started.pickerId) throw new Error('Reopen CloneCutter to enable folder selection, then try again.');
   for (;;) {
     const selection = await requestJson(base, `/api/folders/pick?id=${encodeURIComponent(started.pickerId)}`, undefined, signal);
     if (selection.status === 'complete' || selection.status === 'cancelled') return selection;
