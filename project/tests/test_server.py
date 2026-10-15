@@ -258,12 +258,16 @@ class FilesystemTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Scan did not finish')
 
-    def test_folder_browser_lists_only_real_nonexcluded_directories(self):
+    def test_folder_browser_lists_real_folders_and_files(self):
         self.file('z-last/file')
         self.file('A-first/file')
         self.file('regular-file')
+        self.file('.hidden-file', b'')
+        self.file('Another.txt', b'hello')
         self.file('.Trash/copy')
         (self.root / 'linked-folder').symlink_to(self.root / 'A-first', target_is_directory=True)
+        (self.root / 'linked-file').symlink_to(self.root / 'regular-file')
+        os.mkfifo(self.root / 'pipe')
         with patch.object(server.Path, 'home', return_value=self.root):
             code, result = self.request('GET', '/api/folders')
         self.assertEqual(code, 200)
@@ -271,6 +275,8 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(result['parent'], str(self.root.parent))
         self.assertEqual([folder['name'] for folder in result['directories']], ['A-first', 'z-last'])
         self.assertEqual(result['directories'][0]['path'], str(self.root / 'A-first'))
+        self.assertEqual([file['name'] for file in result['files']], ['.hidden-file', 'Another.txt', 'regular-file'])
+        self.assertEqual(result['files'][1], {'name': 'Another.txt', 'path': str(self.root / 'Another.txt'), 'size': 5})
         self.assertEqual(result['roots'], server.filesystem_roots())
 
     def test_folder_browser_handles_encoded_paths_and_empty_folders(self):
@@ -281,6 +287,7 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertEqual(result['path'], str(folder))
         self.assertEqual(result['directories'], [])
+        self.assertEqual(result['files'], [])
         self.assertEqual(result['breadcrumbs'][-1], {'name': folder.name, 'path': str(folder)})
         self.assertEqual(result['breadcrumbs'][-2]['path'], str(self.root))
         self.assertEqual(result['breadcrumbs'][0]['path'], folder.anchor)

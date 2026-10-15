@@ -110,17 +110,22 @@ def folder_shortcuts(roots):
 def browse_folders(raw=None):
     path = scan_folder(str(Path.home()) if raw is None else raw)
     directories = []
+    files = []
     with os.scandir(path) as entries:
         for entry in entries:
             try:
                 if entry.is_dir(follow_symlinks=False) and not excluded_directory(entry.path):
                     directories.append({"name": entry.name, "path": entry.path})
+                elif entry.is_file(follow_symlinks=False):
+                    files.append({"name": entry.name, "path": entry.path,
+                                  "size": entry.stat(follow_symlinks=False).st_size})
             except OSError:
                 continue
     parent = str(Path(path).parent)
     roots = filesystem_roots()
     return {"path": path, "parent": parent if parent != path else None,
             "directories": sorted(directories, key=lambda folder: folder["name"].casefold()),
+            "files": sorted(files, key=lambda file: file["name"].casefold()),
             "roots": roots, "shortcuts": folder_shortcuts(roots),
             "breadcrumbs": [{"name": folder.name or str(folder), "path": str(folder)}
                             for folder in [*reversed(Path(path).parents), Path(path)]]}

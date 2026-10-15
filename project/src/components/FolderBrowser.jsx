@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { gsap } from 'gsap';
 import { requestJson } from '../lib/api.js';
+import { formatBytes } from '../lib/files.js';
 import Icon from './Icon.jsx';
 
 export default function FolderBrowser({ base, selected, onSelect, onClose }) {
   const browserRef = useRef(null);
+  const dialogRef = useRef(null);
   const [location, setLocation] = useState({ path: null });
   const [pathInput, setPathInput] = useState('');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('');
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    dialog.showModal();
+    document.body.style.overflow = 'hidden';
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
 
   function openFolder(path) {
     setFilter('');
@@ -48,16 +62,22 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
   }, [data?.path, loading]);
 
   const directories = (data?.directories || []).filter((folder) => folder.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
+  const files = (data?.files || []).filter((file) => file.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
 
-  return (
+  return createPortal(
+    <dialog className="folder-dialog" ref={dialogRef} aria-labelledby="folderBrowserTitle" aria-describedby="folderBrowserHelp" onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="folder-browser" aria-label="Folder browser" aria-busy={loading} ref={browserRef}>
-      <p className="scan-scope-note">Click a folder to open it, then add the folder you want to scan. All its subfolders are included.</p>
+      <div className="folder-browser-heading">
+        <h3 id="folderBrowserTitle">Choose a folder</h3>
+        <button type="button" className="icon-button" aria-label="Close folder browser" onClick={onClose} autoFocus><Icon name="close" size={18} /></button>
+      </div>
+      <p id="folderBrowserHelp" className="scan-scope-note">Browse folders and files below. Open a folder, then click Add this folder to scan it and all its subfolders.</p>
       <div className="folder-shortcuts" aria-label="Quick locations">
         <button type="button" className="btn-secondary" disabled={loading} onClick={() => openFolder(null)}><Icon name="folder" size={15} />Home</button>
         {data?.shortcuts?.map((folder) => <button key={folder.path} type="button" className="btn-secondary" disabled={loading} onClick={() => openFolder(folder.path)}>{folder.name}</button>)}
       </div>
       {error && <p className="app-message app-error" role="alert">{error}</p>}
-      {loading && <p className="scan-scope-note" role="status">Loading folders…</p>}
+      {loading && <p className="scan-scope-note" role="status">Loading folders and files…</p>}
       {data && <div className="folder-browser-content" key={data.path}>
         <nav className="folder-navigation" aria-label="Folder navigation">
           <button type="button" className="btn-secondary" onClick={() => openFolder(data.parent)} disabled={loading || !data.parent}>Up one level</button>
@@ -67,18 +87,22 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
             </li>)}
           </ol>
         </nav>
-        <label className="folder-filter" htmlFor="folderFilter">Find a folder here
-          <input id="folderFilter" type="search" className="server-path-input" placeholder="Filter folders by name" value={filter} onChange={(event) => setFilter(event.target.value)} disabled={loading} />
+        <label className="folder-filter" htmlFor="folderFilter">Find a folder or file here
+          <input id="folderFilter" type="search" className="server-path-input" placeholder="Filter folders and files by name" value={filter} onChange={(event) => setFilter(event.target.value)} disabled={loading} />
         </label>
-        <div className="folder-list" aria-label="Subfolders">
+        <ul className="folder-list folder-browser-entries" aria-label="Folders and files">
           {directories.map((folder) => (
-            <button key={folder.path} type="button" className="folder-entry" disabled={loading} onClick={() => openFolder(folder.path)}>
-              <Icon name="folder" size={17} /><span>{folder.name}</span><Icon name="arrow" size={14} />
+            <li key={folder.path}><button type="button" className="folder-entry" disabled={loading} onClick={() => openFolder(folder.path)}>
+              <Icon name="folder" size={17} /><span>{folder.name}</span><small>Folder</small><Icon name="arrow" size={14} />
             </button>
+            </li>
           ))}
-          {!directories.length && <p className="scan-scope-note folder-browser-empty">{filter ? 'No folders match. Try another name.' : 'No subfolders. You can add this folder.'}</p>}
-        </div>
-        <p className="scan-scope-note folder-current-path">Selected location: <strong>{data.path}</strong></p>
+          {files.map((file) => <li key={file.path}>
+            <div className="folder-entry folder-file"><Icon name="file" size={17} /><span>{file.name}</span><small>File · {formatBytes(file.size)}</small></div>
+          </li>)}
+          {!directories.length && !files.length && <li className="scan-scope-note folder-browser-empty">{filter ? 'No folders or files match. Try another name.' : 'This folder is empty. You can still add it.'}</li>}
+        </ul>
+        <p className="scan-scope-note folder-current-path">Current folder: <strong>{data.path}</strong></p>
       </div>}
       <details className="folder-manual-path">
         <summary>Enter a path instead</summary>
@@ -100,5 +124,6 @@ export default function FolderBrowser({ base, selected, onSelect, onClose }) {
         <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
       </div>
     </section>
+    </dialog>, document.body,
   );
 }
